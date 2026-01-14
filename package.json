@@ -1,0 +1,143 @@
+{
+  "name": "gravity-orchestrator",
+  "displayName": "Gravity Orchestrator",
+  "description": "Displays real-time AI model quota status for Antigravity IDE",
+  "version": "0.9.6",
+  "publisher": "AnhNguyen02",
+  "icon": "icon.png",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/anhnv02/gravity-orchestrator.git"
+  },
+  "homepage": "https://github.com/anhnv02/gravity-orchestrator#readme",
+  "bugs": {
+    "url": "https://github.com/anhnv02/gravity-orchestrator/issues"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "gravity-orchestrator.showControlPanel",
+        "title": "Gravity Orchestrator: Show Control Panel"
+      },
+      {
+        "command": "gravity-orchestrator.refreshQuota",
+        "title": "%command.refreshQuota%"
+      },
+      {
+        "command": "gravity-orchestrator.detectPort",
+        "title": "%command.detectPort%"
+      },
+      {
+        "command": "gravity-orchestrator.dev.previewNotifications",
+        "title": "Gravity Orchestrator Dev: Preview Notifications"
+      },
+      {
+        "command": "gravity-orchestrator.dev.previewStatusBar",
+        "title": "Gravity Orchestrator Dev: Preview Status Bar"
+      },
+      {
+        "command": "gravity-orchestrator.dev.previewTooltip",
+        "title": "Gravity Orchestrator Dev: Preview Tooltip"
+      },
+      {
+        "command": "gravity-orchestrator.googleLogin",
+        "title": "%command.googleLogin%"
+      },
+      {
+        "command": "gravity-orchestrator.googleLogout",
+        "title": "%command.googleLogout%"
+      },
+      {
+        "command": "gravity-orchestrator.showAccounts",
+        "title": "%command.showAccounts%"
+      }
+    ],
+    "configuration": {
+      "title": "Gravity Orchestrator",
+      "properties": {
+        "gravityOrchestrator.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "%config.enabled%",
+          "order": 10
+        },
+        "gravityOrchestrator.pollingInterval": {
+          "type": "number",
+          "default": 60,
+          "description": "%config.pollingInterval%",
+          "order": 20
+        },
+        "gravityOrchestrator.apiMethod": {
+          "type": "string",
+          "default": "GOOGLE_API",
+          "enum": [
+            "GET_USER_STATUS",
+            "GOOGLE_API"
+          ],
+          "enumDescriptions": [
+            "%config.apiMethod.getUserStatus%",
+            "%config.apiMethod.googleApi%"
+          ],
+          "description": "%config.apiMethod%",
+          "order": 40
+        },
+        "gravityOrchestrator.forcePowerShell": {
+          "type": "boolean",
+          "default": true,
+          "description": "%config.forcePowerShell%",
+          "order": 75
+        },
+        "gravityOrchestrator.autoSwitchAccount": {
+          "type": "boolean",
+          "default": false,
+          "description": "%config.autoSwitchAccount%",
+          "order": 80
+        },
+        "gravityOrchestrator.switchThreshold": {
+          "type": "number",
+          "default": 10,
+          "minimum": 0,
+          "maximum": 100,
+          "description": "%config.switchThreshold%",
+          "order": 90
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "lint": "eslint src --ext ts",
+    "package": "npx vsce package"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.85.0",
+    "@typescript-eslint/eslint-plugin": "^6.0.0",
+    "@typescript-eslint/parser": "^6.0.0",
+    "eslint": "^8.0.0",
+    "typescript": "^5.3.0"
+  },
+  "dependencies": {
+    "@vscode/codicons": "^0.0.44"
+  },
+  "keywords": [
+    "antigravity",
+    "quota",
+    "monitor",
+    "ai"
+  ],
+  "author": "AnhNguyen02",
+  "license": "MIT"
+}

@@ -1,0 +1,15 @@
+{
+    "command.refreshQuota": "Gravity Orchestrator: Refresh Quota",
+    "command.detectPort": "Gravity Orchestrator: Re-detect Port",
+    "command.googleLogin": "Gravity Orchestrator: Login with Google",
+    "command.googleLogout": "Gravity Orchestrator: Logout from Google",
+    "command.showAccounts": "Gravity Orchestrator: Manage Accounts",
+    "config.enabled": "Enable auto monitoring",
+    "config.pollingInterval": "Polling interval (seconds)",
+    "config.apiMethod": "API method for fetching quota",
+    "config.apiMethod.getUserStatus": "GET_USER_STATUS - Full quota info via local API",
+    "config.apiMethod.googleApi": "GOOGLE_API - Fetch quota via Google Cloud Code API (requires login)",
+    "config.forcePowerShell": "Use PowerShell mode for process detection [Windows only, requires extension restart]",
+    "config.autoSwitchAccount": "Automatically switch to another account when quota is low",
+    "config.switchThreshold": "Quota threshold (%) to trigger automatic account switching"
+}
