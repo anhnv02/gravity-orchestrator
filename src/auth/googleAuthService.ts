@@ -14,6 +14,7 @@ import { TokenStorage, TokenData } from './tokenStorage';
 import { CallbackServer } from './callbackServer';
 import { LocalizationService } from '../i18n/localizationService';
 import { logger } from '../utils/logger';
+import { AntigravityManagerClient } from '../api/antigravityManagerClient';
 
 export enum AuthState {
     NOT_AUTHENTICATED = 'not_authenticated',
@@ -222,6 +223,19 @@ export class GoogleAuthService {
             }
             logger.info('[GoogleAuth] Token saved to secure storage');
 
+            // Try to sync with Antigravity-Manager
+            if (tokenData.refreshToken) {
+                try {
+                    const antigravityManagerClient = AntigravityManagerClient.getInstance();
+                    logger.info('[GoogleAuth] Syncing account with Antigravity-Manager...');
+                    await antigravityManagerClient.addAccount(tokenData.refreshToken);
+                    logger.info('[GoogleAuth] Successfully added account to Antigravity-Manager');
+                } catch (e) {
+                    logger.warn('[GoogleAuth] Failed to sync with Antigravity-Manager:', e);
+                    // Continue anyway - local storage is updated
+                }
+            }
+
             this.userEmail = userEmail;
             this.setState(AuthState.AUTHENTICATED);
             vscode.window.showInformationMessage(LocalizationService.getInstance().t('login.success.google'));
@@ -353,6 +367,19 @@ export class GoogleAuthService {
             await this.tokenStorage.setActiveAccount(userEmail);
             logger.info('[GoogleAuth] Token saved to secure storage');
 
+            // Try to sync with Antigravity-Manager
+            if (tokenData.refreshToken) {
+                try {
+                    const antigravityManagerClient = AntigravityManagerClient.getInstance();
+                    logger.info('[GoogleAuth] Syncing imported account with Antigravity-Manager...');
+                    await antigravityManagerClient.addAccount(tokenData.refreshToken);
+                    logger.info('[GoogleAuth] Successfully added imported account to Antigravity-Manager');
+                } catch (e) {
+                    logger.warn('[GoogleAuth] Failed to sync with Antigravity-Manager:', e);
+                    // Continue anyway - local storage is updated
+                }
+            }
+
             this.userEmail = userEmail;
             this.setState(AuthState.AUTHENTICATED);
             vscode.window.showInformationMessage(LocalizationService.getInstance().t('login.success.localToken'));
@@ -440,6 +467,23 @@ export class GoogleAuthService {
             return false;
         }
 
+        // Try to sync with Antigravity-Manager
+        try {
+            const antigravityManagerClient = AntigravityManagerClient.getInstance();
+            const accountsResponse = await antigravityManagerClient.getAllAccounts();
+            const targetAccount = accountsResponse.accounts.find(acc => acc.email === email);
+            
+            if (targetAccount) {
+                logger.info(`[GoogleAuth] Found account in Antigravity-Manager, switching to account ID: ${targetAccount.id}`);
+                await antigravityManagerClient.switchAccount(targetAccount.id);
+                logger.info('[GoogleAuth] Successfully switched account in Antigravity-Manager');
+            } else {
+                logger.warn('[GoogleAuth] Account not found in Antigravity-Manager, will only update local storage');
+            }
+        } catch (e) {
+            logger.warn('[GoogleAuth] Failed to sync with Antigravity-Manager, continuing with local switch:', e);
+        }
+
         await this.tokenStorage.setActiveAccount(email);
         const token = await this.tokenStorage.getTokenForAccount(email);
         this.userEmail = token?.email || email;
@@ -463,7 +507,12 @@ export class GoogleAuthService {
     public async addAccount(): Promise<boolean> {
         // Same as login but doesn't clear current account
         logger.info('[GoogleAuth] Adding new account...');
-        return await this.login();
+        const result = await this.login();
+        
+        // Note: The login() method already syncs with Antigravity-Manager via addAccount API
+        // So we don't need to do anything extra here
+        
+        return result;
     }
 
     public async fetchUserInfo(accessToken: string): Promise<UserInfoResponse> {

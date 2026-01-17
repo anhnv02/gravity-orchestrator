@@ -5,3 +5,8 @@ export {
     ModelQuotaFromApi,
     ModelsQuotaResponse,
 } from './googleCloudCodeClient';
+
+export {
+    AntigravityManagerClient,
+    AntigravityManagerError,
+} from './antigravityManagerClient';

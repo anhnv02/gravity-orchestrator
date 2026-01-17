@@ -1,6 +1,6 @@
 import { GoogleAuthService } from '../auth';
 import { TokenStorage } from '../auth/tokenStorage';
-import { GoogleCloudCodeClient, ModelQuotaFromApi } from '../api/googleCloudCodeClient';
+import { AntigravityManagerClient } from '../api/antigravityManagerClient';
 import { logger } from './logger';
 
 export interface AccountInfo {
@@ -30,57 +30,74 @@ export function clearAccountUsageCache(): void {
 export async function getMultiAccountInfo(): Promise<MultiAccountInfo> {
   const googleAuthService = GoogleAuthService.getInstance();
   const tokenStorage = TokenStorage.getInstance();
-  const googleApiClient = GoogleCloudCodeClient.getInstance();
+  const antigravityManagerClient = AntigravityManagerClient.getInstance();
   
-  const [allAccounts, activeAccount] = await Promise.all([
-    googleAuthService.getAllAccounts(),
-    googleAuthService.getActiveAccount()
-  ]);
+  try {
+    // Get all accounts from Antigravity-Manager
+    const accountsResponse = await antigravityManagerClient.getAllAccounts();
+    const currentAccountId = accountsResponse.current_account_id;
 
-  const now = Date.now();
-  const accountsInfoPromises = allAccounts.map(async (email) => {
-    const isExpired = await tokenStorage.isTokenExpiredForAccount(email);
-    let usagePercentage: number | undefined;
+    const now = Date.now();
+    const accountsInfoPromises = accountsResponse.accounts.map(async (account) => {
+      const email = account.email;
+      const isExpired = account.disabled || !account.quota;
+      let usagePercentage: number | undefined;
 
-    // Try to get from cache first
-    const cached = usageCache.get(email);
-    if (cached && (now - cached.timestamp < CACHE_TTL)) {
-      usagePercentage = cached.percentage;
-    }
+      // Try to get from cache first
+      const cached = usageCache.get(email);
+      if (cached && (now - cached.timestamp < CACHE_TTL)) {
+        usagePercentage = cached.percentage;
+      }
 
-    if (usagePercentage === undefined && !isExpired) {
-      try {
-        const accessToken = await googleAuthService.getValidAccessTokenForAccount(email);
-        const projectInfo = await googleApiClient.loadProjectInfo(accessToken);
-        const modelsQuota = await googleApiClient.fetchModelsQuota(accessToken, projectInfo.projectId);
-        
-        if (modelsQuota.models.length > 0) {
+      if (usagePercentage === undefined && account.quota && account.quota.models.length > 0) {
+        try {
           // Use minimum remaining quota as representative percentage
-          const minRemaining = Math.min(...modelsQuota.models.map((m: ModelQuotaFromApi) => m.remainingQuota));
+          const minRemaining = Math.min(...account.quota.models.map((m) => m.percentage / 100));
           // Convert remaining to used percentage
           usagePercentage = (1 - minRemaining) * 100;
           
           // Update cache
           usageCache.set(email, { percentage: usagePercentage, timestamp: now });
+        } catch (e) {
+          logger.error(`[AccountUtils] Failed to calculate usage for ${email}:`, e);
         }
-      } catch (e) {
-        logger.error(`[AccountUtils] Failed to fetch quota for ${email}:`, e);
       }
-    }
+
+      return {
+        email,
+        isActive: account.id === currentAccountId,
+        isExpired,
+        usagePercentage
+      };
+    });
+
+    const accountsInfo = await Promise.all(accountsInfoPromises);
 
     return {
-      email,
-      isActive: email === activeAccount,
-      isExpired,
-      usagePercentage
+      accounts: accountsInfo
     };
-  });
+  } catch (e) {
+    logger.error('[AccountUtils] Failed to fetch accounts from Antigravity-Manager, falling back to GoogleAuthService:', e);
+    
+    // Fallback to original method if Antigravity-Manager API is not available
+    const [allAccounts, activeAccount] = await Promise.all([
+      googleAuthService.getAllAccounts(),
+      googleAuthService.getActiveAccount()
+    ]);
 
-  const accountsInfo = await Promise.all(accountsInfoPromises);
+    const accountsInfo = allAccounts.map((email) => {
+      return {
+        email,
+        isActive: email === activeAccount,
+        isExpired: false, // Can't determine from fallback
+        usagePercentage: undefined
+      };
+    });
 
-  return {
-    accounts: accountsInfo
-  };
+    return {
+      accounts: accountsInfo
+    };
+  }
 }
 
 /**
