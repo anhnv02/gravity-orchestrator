@@ -14,7 +14,6 @@ import { TokenStorage, TokenData } from './tokenStorage';
 import { CallbackServer } from './callbackServer';
 import { LocalizationService } from '../i18n/localizationService';
 import { logger } from '../utils/logger';
-import { AntigravityManagerClient } from '../api/antigravityManagerClient';
 
 export enum AuthState {
     NOT_AUTHENTICATED = 'not_authenticated',
@@ -223,19 +222,6 @@ export class GoogleAuthService {
             }
             logger.info('[GoogleAuth] Token saved to secure storage');
 
-            // Try to sync with Antigravity-Manager
-            if (tokenData.refreshToken) {
-                try {
-                    const antigravityManagerClient = AntigravityManagerClient.getInstance();
-                    logger.info('[GoogleAuth] Syncing account with Antigravity-Manager...');
-                    await antigravityManagerClient.addAccount(tokenData.refreshToken);
-                    logger.info('[GoogleAuth] Successfully added account to Antigravity-Manager');
-                } catch (e) {
-                    logger.warn('[GoogleAuth] Failed to sync with Antigravity-Manager:', e);
-                    // Continue anyway - local storage is updated
-                }
-            }
-
             this.userEmail = userEmail;
             this.setState(AuthState.AUTHENTICATED);
             vscode.window.showInformationMessage(LocalizationService.getInstance().t('login.success.google'));
@@ -367,19 +353,6 @@ export class GoogleAuthService {
             await this.tokenStorage.setActiveAccount(userEmail);
             logger.info('[GoogleAuth] Token saved to secure storage');
 
-            // Try to sync with Antigravity-Manager
-            if (tokenData.refreshToken) {
-                try {
-                    const antigravityManagerClient = AntigravityManagerClient.getInstance();
-                    logger.info('[GoogleAuth] Syncing imported account with Antigravity-Manager...');
-                    await antigravityManagerClient.addAccount(tokenData.refreshToken);
-                    logger.info('[GoogleAuth] Successfully added imported account to Antigravity-Manager');
-                } catch (e) {
-                    logger.warn('[GoogleAuth] Failed to sync with Antigravity-Manager:', e);
-                    // Continue anyway - local storage is updated
-                }
-            }
-
             this.userEmail = userEmail;
             this.setState(AuthState.AUTHENTICATED);
             vscode.window.showInformationMessage(LocalizationService.getInstance().t('login.success.localToken'));
@@ -459,29 +432,52 @@ export class GoogleAuthService {
         return await this.tokenStorage.getActiveAccount();
     }
 
+    public async getRefreshTokenForAccount(email: string): Promise<string | null> {
+        return await this.tokenStorage.getRefreshTokenForAccount(email);
+    }
+
     public async switchAccount(email: string): Promise<boolean> {
         logger.info('[GoogleAuth] Switching to account:', email);
+        
+        // Try to use Antigravity Tools API first
+        try {
+            const { AntigravityToolsApi } = await import('../api/antigravityToolsApi');
+            const isApiReady = await AntigravityToolsApi.isApiReady();
+            
+            if (isApiReady) {
+                logger.info('[GoogleAuth] Using Antigravity Tools API to switch account');
+                const accountsResponse = await AntigravityToolsApi.listAccounts();
+                
+                // Find account by email
+                const account = accountsResponse.accounts.find(acc => acc.email === email);
+                if (!account) {
+                    logger.error('[GoogleAuth] Account not found in Antigravity Tools:', email);
+                    return false;
+                }
+                
+                // Switch using API
+                const switchResponse = await AntigravityToolsApi.switchAccount(account.id);
+                if (switchResponse.success) {
+                    logger.info('[GoogleAuth] Account switched successfully via API:', email);
+                    // Update local state
+                    await this.tokenStorage.setActiveAccount(email);
+                    this.userEmail = email;
+                    this.setState(AuthState.AUTHENTICATED);
+                    return true;
+                } else {
+                    logger.warn('[GoogleAuth] API switch returned success=false');
+                    return false;
+                }
+            }
+        } catch (error) {
+            logger.warn('[GoogleAuth] Failed to use Antigravity Tools API, falling back to local switch:', error);
+        }
+        
+        // Fallback to local token storage method
         const hasToken = await this.tokenStorage.hasTokenForAccount(email);
         if (!hasToken) {
             logger.error('[GoogleAuth] Account not found:', email);
             return false;
-        }
-
-        // Try to sync with Antigravity-Manager
-        try {
-            const antigravityManagerClient = AntigravityManagerClient.getInstance();
-            const accountsResponse = await antigravityManagerClient.getAllAccounts();
-            const targetAccount = accountsResponse.accounts.find(acc => acc.email === email);
-            
-            if (targetAccount) {
-                logger.info(`[GoogleAuth] Found account in Antigravity-Manager, switching to account ID: ${targetAccount.id}`);
-                await antigravityManagerClient.switchAccount(targetAccount.id);
-                logger.info('[GoogleAuth] Successfully switched account in Antigravity-Manager');
-            } else {
-                logger.warn('[GoogleAuth] Account not found in Antigravity-Manager, will only update local storage');
-            }
-        } catch (e) {
-            logger.warn('[GoogleAuth] Failed to sync with Antigravity-Manager, continuing with local switch:', e);
         }
 
         await this.tokenStorage.setActiveAccount(email);
@@ -507,12 +503,7 @@ export class GoogleAuthService {
     public async addAccount(): Promise<boolean> {
         // Same as login but doesn't clear current account
         logger.info('[GoogleAuth] Adding new account...');
-        const result = await this.login();
-        
-        // Note: The login() method already syncs with Antigravity-Manager via addAccount API
-        // So we don't need to do anything extra here
-        
-        return result;
+        return await this.login();
     }
 
     public async fetchUserInfo(accessToken: string): Promise<UserInfoResponse> {

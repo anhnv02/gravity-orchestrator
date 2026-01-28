@@ -93,7 +93,7 @@ export class ProcessPortDetector {
 
         if (errorMsg.includes('timeout')) {
           logger.error('[PortDetector]   Reason: command execution timed out; the system may be under heavy load');
-        } else if (errorMsg.includes('not found') || errorMsg.includes('not recognized') || errorMsg.includes('không phải lệnh nội bộ hoặc bên ngoài')) {
+        } else if (errorMsg.includes('not found') || errorMsg.includes('not recognized') || errorMsg.includes('not recognized as an internal or external command')) {
           logger.error(`[PortDetector]   Reason: ${errorMessages.commandNotAvailable}`);
 
           if (this.platformDetector.getPlatformName() === 'Windows') {

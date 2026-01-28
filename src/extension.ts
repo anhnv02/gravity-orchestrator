@@ -29,7 +29,6 @@ const FOCUS_REFRESH_THROTTLE_MS = 3000;
 const AUTO_REDETECT_THROTTLE_MS = 30000;
 const LOCAL_TOKEN_CHECK_INTERVAL_MS = 30000;
 let lastAutoRedetectTime: number = 0;
-let isSwitchingAccount: boolean = false;
 
 export async function activate(context: vscode.ExtensionContext) {
   logger.initialize(context);
@@ -37,6 +36,9 @@ export async function activate(context: vscode.ExtensionContext) {
   logger.info(`=== Gravity Orchestrator v${versionInfo.getExtensionVersion()} ===`);
   logger.info(`Running on: ${versionInfo.getIdeName()} v${versionInfo.getIdeVersion()}`);
   globalState = context.globalState;
+
+  // Set dev context for Command Palette visibility
+  vscode.commands.executeCommand('setContext', 'gravityOrchestrator.isDev', context.extensionMode === vscode.ExtensionMode.Development);
 
   configService = new ConfigService();
   let config = configService.getConfig();
@@ -46,9 +48,17 @@ export async function activate(context: vscode.ExtensionContext) {
   const isAntigravityIde = versionInfo.isAntigravityIde();
 
   statusBarService = new StatusBarService();
+  
+  // Start polling from app API on activation
+  statusBarService.updateDisplayFromApp().catch(error => {
+    logger.error('[Extension] Failed to initialize status bar from app API:', error);
+  });
 
   googleAuthService = GoogleAuthService.getInstance();
   await googleAuthService.initialize(context);
+
+  // Auto-add account from IDE if app API is ready and no account exists
+  await autoAddAccountFromIde();
 
   const apiMethod = getApiMethodFromConfig(config.apiMethod);
 
@@ -94,6 +104,12 @@ export async function activate(context: vscode.ExtensionContext) {
     'gravity-orchestrator.quickRefreshQuota',
     async () => {
       logger.info('[Extension] quickRefreshQuota command invoked');
+      
+      // Always try to refresh from app API first
+      statusBarService?.showQuickRefreshing();
+      await statusBarService?.updateDisplayFromApp();
+      
+      // Also refresh from quota service if available (for ControlPanel)
       if (!quotaService) {
         config = configService!.getConfig();
         const currentApiMethod = getApiMethodFromConfig(config.apiMethod);
@@ -111,9 +127,6 @@ export async function activate(context: vscode.ExtensionContext) {
       }
 
       logger.info('User triggered quick quota refresh');
-
-      statusBarService?.showQuickRefreshing();
-
       await quotaService.quickRefresh();
     }
   );
@@ -185,7 +198,8 @@ export async function activate(context: vscode.ExtensionContext) {
 
             quotaService.onQuotaUpdate((snapshot: QuotaSnapshot) => {
               lastQuotaSnapshot = snapshot;
-              statusBarService?.updateDisplay(snapshot);
+              // Update status bar from app API instead of quota service
+              statusBarService?.updateDisplayFromApp();
               ControlPanel.update(snapshot);
             });
 
@@ -283,6 +297,11 @@ export async function activate(context: vscode.ExtensionContext) {
       statusBarService?.showLoggingIn();
       const success = await googleAuthService.login();
       if (success) {
+        const userEmail = googleAuthService.getUserEmail();
+        if (userEmail) {
+          await syncAccountToApp(userEmail);
+        }
+        
         config = configService!.getConfig();
         if (config.apiMethod === 'GOOGLE_API' && quotaService) {
           if (config.enabled) {
@@ -304,8 +323,21 @@ export async function activate(context: vscode.ExtensionContext) {
         return;
       }
 
+      const userEmail = googleAuthService.getUserEmail();
       const wasLoggedIn = await googleAuthService.logout();
-      if (wasLoggedIn) {
+      if (wasLoggedIn || userEmail) {
+        const emailToRemove = userEmail;
+        if (emailToRemove) {
+          try {
+            const { AntigravityToolsApi } = await import('./api/antigravityToolsApi');
+            if (await AntigravityToolsApi.isApiReady()) {
+              await AntigravityToolsApi.removeAccount(emailToRemove);
+              logger.info(`[Extension] Successfully removed active account from app: ${emailToRemove}`);
+            }
+          } catch (e) {
+            logger.error('[Extension] Failed to remove active account from app:', e);
+          }
+        }
         vscode.window.showInformationMessage(localizationService.t('logout.success'));
       }
 
@@ -344,6 +376,17 @@ export async function activate(context: vscode.ExtensionContext) {
       statusBarService?.showLoggingIn();
       const success = await googleAuthService.addAccount();
       if (success) {
+        const userEmail = googleAuthService.getUserEmail();
+        if (userEmail) {
+          await syncAccountToApp(userEmail);
+        }
+        
+        // Update status bar and control panel
+        statusBarService?.updateDisplayFromApp().catch(error => {
+          logger.error('[Extension] Failed to update status bar:', error);
+        });
+        ControlPanel.update(undefined); // Force refresh Control Panel
+        
         config = configService!.getConfig();
         if (config.apiMethod === 'GOOGLE_API' && quotaService) {
           if (config.enabled) {
@@ -366,36 +409,30 @@ export async function activate(context: vscode.ExtensionContext) {
         return;
       }
 
-      config = configService!.getConfig();
-      
-      // Check quota before switching
-      try {
-        const multiAccountInfo = await getMultiAccountInfo();
-        const targetAccount = multiAccountInfo.accounts.find((a: AccountInfo) => a.email === email);
-        
-        if (targetAccount && targetAccount.usagePercentage !== undefined) {
-          const remaining = 100 - targetAccount.usagePercentage;
-          if (remaining <= config.switchThreshold) {
-            vscode.window.showErrorMessage(
-              localizationService.t('notify.lowQuotaError', { 
-                email: email, 
-                remaining: remaining.toFixed(1),
-                threshold: config.switchThreshold
-              })
-            );
-            logger.info(`[Extension] Manual switch blocked: Account ${email} quota (${remaining.toFixed(1)}%) is below threshold (${config.switchThreshold}%)`);
-            return;
-          }
-        }
-      } catch (e) {
-        logger.warn('[Extension] Failed to check quota before switching:', e);
-      }
-
       const success = await googleAuthService.switchAccount(email);
       if (success) {
+        // Also try to switch in local app if possible
+        try {
+          const { AntigravityToolsApi } = await import('./api/antigravityToolsApi');
+          if (await AntigravityToolsApi.isApiReady()) {
+              const accountsResponse = await AntigravityToolsApi.listAccounts();
+              const targetAccount = accountsResponse.accounts.find(a => a.email === email);
+              if (targetAccount) {
+                  await AntigravityToolsApi.switchAccount(targetAccount.id);
+                  logger.info(`[Extension] Successfully switched account in app to: ${email}`);
+              }
+          }
+        } catch (e) {
+          logger.error('[Extension] Failed to switch account in app:', e);
+        }
+
         lastQuotaSnapshot = undefined;
         clearAccountUsageCache();
         statusBarService?.showFetching();
+        
+        // Wait a brief moment for app to update its internal state before refreshing UI
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
         ControlPanel.update(undefined);
 
         config = configService!.getConfig();
@@ -414,35 +451,55 @@ export async function activate(context: vscode.ExtensionContext) {
 
   const googleLogoutAccountCommand = vscode.commands.registerCommand(
     'gravity-orchestrator.googleLogoutAccount',
-    async (email: string) => {
-      logger.info('[Extension] googleLogoutAccount command invoked for:', email);
+    async (email: string, accountId?: string) => {
+      logger.info('[Extension] googleLogoutAccount command invoked for:', email, accountId);
       if (!googleAuthService) {
         return;
       }
 
-      const wasLoggedIn = await googleAuthService.logoutAccount(email);
-      if (wasLoggedIn) {
-        vscode.window.showInformationMessage(`Removed account: ${email}`);
+      await googleAuthService.logoutAccount(email);
+      vscode.window.showInformationMessage(`Removed account: ${email}`);
+      
+      // Always try to remove from local app if possible
+      try {
+        const { AntigravityToolsApi } = await import('./api/antigravityToolsApi');
+        if (await AntigravityToolsApi.isApiReady()) {
+          await AntigravityToolsApi.removeAccount(email, accountId);
+          logger.info(`[Extension] Successfully removed account from app: ${email} (ID: ${accountId})`);
+          
+          // Wait a brief moment for app to update its internal state
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+      } catch (e) {
+        logger.error('[Extension] Failed to remove account from app:', e);
       }
 
       config = configService!.getConfig();
       const activeAccount = await googleAuthService.getActiveAccount();
+      
+      // Clear snapshots to force fresh fetch
+      lastQuotaSnapshot = undefined;
+      clearAccountUsageCache();
+
       if (config.apiMethod === 'GOOGLE_API') {
         if (!activeAccount) {
-          lastQuotaSnapshot = undefined;
-          clearAccountUsageCache();
           quotaService?.stopPolling();
           statusBarService?.clearStale();
           statusBarService?.showNotLoggedIn();
           ControlPanel.update(undefined);
         } else {
-          // Refresh with new active account
-          lastQuotaSnapshot = undefined;
-          clearAccountUsageCache();
+          // Re-start polling and refresh for the new active account
           if (config.enabled && quotaService) {
             await quotaService.startPolling(config.pollingInterval);
             await quotaService.quickRefresh();
           }
+          ControlPanel.update(undefined);
+        }
+      } else {
+        // Local API mode - just refresh UI to show updated account list from app
+        ControlPanel.update(undefined);
+        if (config.enabled && quotaService) {
+          await quotaService.quickRefresh();
         }
       }
 
@@ -511,6 +568,78 @@ export async function activate(context: vscode.ExtensionContext) {
   registerDevCommands(context);
 
   logger.info('Gravity Orchestrator initialized');
+}
+
+/**
+ * Automatically add account from IDE to app if:
+ * 1. App API is ready
+ * 2. No current account in app
+ * 3. IDE has a logged-in account (token available)
+ */
+async function autoAddAccountFromIde(): Promise<void> {
+  try {
+    const { AntigravityToolsApi } = await import('./api/antigravityToolsApi');
+    const { extractRefreshTokenFromAntigravity, hasAntigravityDb } = await import('./auth/antigravityTokenExtractor');
+    
+    // Check if app API is ready
+    const isApiReady = await AntigravityToolsApi.isApiReady();
+    if (!isApiReady) {
+      logger.info('[AutoAddAccount] App API not ready, skipping auto-add');
+      return;
+    }
+
+    // Check if app has current account
+    const currentAccountResponse = await AntigravityToolsApi.getCurrentAccount();
+    if (currentAccountResponse.account) {
+      logger.info('[AutoAddAccount] App already has current account, skipping auto-add');
+      return;
+    }
+
+    // Check if IDE has a logged-in account
+    if (!hasAntigravityDb()) {
+      logger.info('[AutoAddAccount] No Antigravity database found, skipping auto-add');
+      return;
+    }
+
+    const refreshToken = await extractRefreshTokenFromAntigravity();
+    if (!refreshToken) {
+      logger.info('[AutoAddAccount] No refresh token found in IDE, skipping auto-add');
+      return;
+    }
+
+    logger.info('[AutoAddAccount] Found refresh token in IDE, adding to app...');
+    
+    // Add account to app using the refresh token
+    const addResponse = await AntigravityToolsApi.addAccount(refreshToken);
+    if (addResponse.success) {
+      logger.info('[AutoAddAccount] Successfully added account to app');
+      
+      // Wait a bit for account to be fully added
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      // Refresh quota for all accounts in app
+      try {
+        logger.info('[AutoAddAccount] Refreshing quota for all accounts...');
+        const refreshResponse = await AntigravityToolsApi.refreshAllQuotas();
+        if (refreshResponse.success) {
+          logger.info('[AutoAddAccount] Successfully refreshed quota');
+        } else {
+          logger.warn('[AutoAddAccount] Quota refresh returned success=false');
+        }
+      } catch (error) {
+        logger.error('[AutoAddAccount] Failed to refresh quota:', error);
+      }
+      
+      // Refresh status bar to show new account
+      statusBarService?.updateDisplayFromApp().catch(error => {
+        logger.error('[AutoAddAccount] Failed to refresh status bar:', error);
+      });
+    } else {
+      logger.warn('[AutoAddAccount] Failed to add account to app');
+    }
+  } catch (error) {
+    logger.error('[AutoAddAccount] Error during auto-add:', error);
+  }
 }
 
 async function initializeGoogleApiMethod(
@@ -699,110 +828,6 @@ function stopLocalTokenCheckTimer(): void {
 
 
 
-async function checkAndAutoSwitchAccount(snapshot: QuotaSnapshot) {
-  if (!configService || isSwitchingAccount) {
-    return;
-  }
-
-  const config = configService.getConfig();
-  if (!config.autoSwitchAccount) {
-    return;
-  }
-
-  // Determine current remaining percentage
-  let currentPercentage: number | undefined;
-
-  if (snapshot.promptCredits) {
-    currentPercentage = snapshot.promptCredits.remainingPercentage;
-  } else if (snapshot.models && snapshot.models.length > 0) {
-    // Use minimum percentage from models that have a quota
-    const percentages = snapshot.models
-      .map(m => m.remainingPercentage)
-      .filter((p): p is number => p !== undefined);
-    
-    if (percentages.length > 0) {
-      currentPercentage = Math.min(...percentages);
-    }
-  }
-
-  if (currentPercentage === undefined) {
-    return;
-  }
-
-  if (currentPercentage <= config.switchThreshold) {
-    logger.info(`[AutoSwitch] Quota low (${currentPercentage.toFixed(1)}% <= ${config.switchThreshold}%). Attempting to switch account...`);
-    
-    if (!googleAuthService) {
-      return;
-    }
-
-    const multiAccountInfo = await getMultiAccountInfo();
-    const activeAccount = await googleAuthService.getActiveAccount();
-    
-    if (multiAccountInfo.accounts.length <= 1) {
-      logger.info('[AutoSwitch] Only one account available, cannot switch.');
-      return;
-    }
-
-    // Find all accounts that are NOT expired and have quota ABOVE the threshold
-    const validAccounts = multiAccountInfo.accounts.filter(acc => {
-      if (acc.isExpired) return false;
-      const remaining = acc.usagePercentage !== undefined ? 100 - acc.usagePercentage : 100;
-      return remaining > config.switchThreshold;
-    });
-
-    if (validAccounts.length === 0) {
-      logger.warn('[AutoSwitch] All available accounts have low quota. Stopping automatic switch.');
-      vscode.window.showErrorMessage(
-        LocalizationService.getInstance().t('notify.allAccountsLowQuota', { threshold: config.switchThreshold })
-      );
-      return;
-    }
-
-    // Find the next available valid account (circular)
-    const activeIndex = activeAccount ? multiAccountInfo.accounts.findIndex(a => a.email === activeAccount) : -1;
-    
-    // Search for next valid account starting from (activeIndex + 1)
-    let nextAccount: AccountInfo | undefined;
-    for (let i = 1; i < multiAccountInfo.accounts.length; i++) {
-        const idx = (activeIndex + i) % multiAccountInfo.accounts.length;
-        const candidate = multiAccountInfo.accounts[idx];
-        if (validAccounts.some(v => v.email === candidate.email)) {
-            nextAccount = candidate;
-            break;
-        }
-    }
-
-    if (nextAccount && nextAccount.email !== activeAccount) {
-      isSwitchingAccount = true;
-      try {
-        const nextEmail = nextAccount.email;
-        logger.info(`[AutoSwitch] Switching from ${activeAccount} to ${nextEmail}`);
-        const success = await googleAuthService.switchAccount(nextEmail);
-        if (success) {
-          lastQuotaSnapshot = undefined;
-          clearAccountUsageCache();
-          statusBarService?.showFetching();
-          ControlPanel.update(undefined);
-
-          vscode.window.showInformationMessage(`Auto-switched to account: ${nextEmail} (Current account quota was low: ${currentPercentage.toFixed(1)}%)`);
-          
-          if (quotaService) {
-            await quotaService.quickRefresh();
-          }
-        }
-      } catch (error) {
-        logger.error('[AutoSwitch] Failed to switch account:', error);
-      } finally {
-        // Cooldown before allowing another switch
-        setTimeout(() => {
-          isSwitchingAccount = false;
-        }, 60000); // 1 minute cooldown for auto-switch
-      }
-    }
-  }
-}
-
 function registerQuotaServiceCallbacks(): void {
   if (!quotaService || !statusBarService) {
     return;
@@ -810,9 +835,9 @@ function registerQuotaServiceCallbacks(): void {
 
   quotaService.onQuotaUpdate((snapshot: QuotaSnapshot) => {
     lastQuotaSnapshot = snapshot;
-    statusBarService?.updateDisplay(snapshot);
+    // Update status bar from app API instead of quota service
+    statusBarService?.updateDisplayFromApp();
     ControlPanel.update(snapshot);
-    checkAndAutoSwitchAccount(snapshot);
 
     const apiMethod = quotaService?.getApiMethod();
     if (apiMethod === QuotaApiMethod.GOOGLE_API) {
@@ -949,6 +974,11 @@ function handleConfigChange(config: Config): void {
                 statusBarService?.showLoggingIn();
                 const success = await googleAuthService.loginWithRefreshToken(refreshToken);
                 if (success) {
+                  const userEmail = googleAuthService.getUserEmail();
+                  if (userEmail) {
+                    await syncAccountToApp(userEmail);
+                  }
+                  
                   if (config.enabled) {
                     quotaService.startPolling(config.pollingInterval);
                   }
@@ -1028,6 +1058,51 @@ function handleConfigChange(config: Config): void {
 
     vscode.window.showInformationMessage(localizationService.t('notify.configUpdated'));
   }, 300);
+}
+
+/**
+ * Helper to sync an account and its token to the Antigravity Tools app
+ */
+async function syncAccountToApp(email: string): Promise<boolean> {
+  try {
+    const { AntigravityToolsApi } = await import('./api/antigravityToolsApi');
+    const isApiReady = await AntigravityToolsApi.isApiReady();
+    
+    if (!isApiReady) {
+      logger.info('[SyncAccount] App API not ready, skipping sync');
+      return false;
+    }
+
+    const googleAuthService = GoogleAuthService.getInstance();
+    const refreshToken = await googleAuthService.getRefreshTokenForAccount(email);
+    
+    if (!refreshToken) {
+      logger.warn('[SyncAccount] No refresh token found for account:', email);
+      return false;
+    }
+
+    logger.info('[SyncAccount] Syncing account to app:', email);
+    const addAccountResponse = await AntigravityToolsApi.addAccount(refreshToken);
+    
+    if (addAccountResponse.success) {
+      logger.info('[SyncAccount] Successfully added/updated account in app');
+      
+      // Refresh quota for all accounts in app
+      try {
+        await AntigravityToolsApi.refreshAllQuotas();
+        logger.info('[SyncAccount] Successfully refreshed quotas in app');
+      } catch (error) {
+        logger.error('[SyncAccount] Failed to refresh quotas:', error);
+      }
+      return true;
+    } else {
+      logger.warn('[SyncAccount] App returned failure:', addAccountResponse.message);
+      return false;
+    }
+  } catch (error) {
+    logger.error('[SyncAccount] Error syncing account to app:', error);
+    return false;
+  }
 }
 
 export function deactivate() {
