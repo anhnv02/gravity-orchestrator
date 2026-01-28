@@ -2,7 +2,7 @@
   "name": "gravity-orchestrator",
   "displayName": "Gravity Orchestrator",
   "description": "Displays real-time AI model quota status for Antigravity IDE",
-  "version": "0.9.6",
+  "version": "0.9.8",
   "publisher": "AnhNguyen02",
   "icon": "icon.png",
   "engines": {
@@ -27,89 +27,75 @@
     "commands": [
       {
         "command": "gravity-orchestrator.showControlPanel",
-        "title": "Gravity Orchestrator: Show Control Panel"
+        "title": "%command.showControlPanel%",
+        "icon": "$(dashboard)"
       },
       {
-        "command": "gravity-orchestrator.refreshQuota",
-        "title": "%command.refreshQuota%"
-      },
-      {
-        "command": "gravity-orchestrator.detectPort",
-        "title": "%command.detectPort%"
-      },
-      {
-        "command": "gravity-orchestrator.dev.previewNotifications",
-        "title": "Gravity Orchestrator Dev: Preview Notifications"
-      },
-      {
-        "command": "gravity-orchestrator.dev.previewStatusBar",
-        "title": "Gravity Orchestrator Dev: Preview Status Bar"
-      },
-      {
-        "command": "gravity-orchestrator.dev.previewTooltip",
-        "title": "Gravity Orchestrator Dev: Preview Tooltip"
+        "command": "gravity-orchestrator.quickRefreshQuota",
+        "title": "%command.quickRefreshQuota%",
+        "icon": "$(refresh)"
       },
       {
         "command": "gravity-orchestrator.googleLogin",
-        "title": "%command.googleLogin%"
+        "title": "%command.googleLogin%",
+        "icon": "$(sign-in)"
       },
       {
-        "command": "gravity-orchestrator.googleLogout",
-        "title": "%command.googleLogout%"
+        "command": "gravity-orchestrator.dev.previewNotifications",
+        "title": "%command.dev.previewNotifications%",
+        "icon": "$(megaphone)"
       },
       {
-        "command": "gravity-orchestrator.showAccounts",
-        "title": "%command.showAccounts%"
+        "command": "gravity-orchestrator.dev.previewStatusBar",
+        "title": "%command.dev.previewStatusBar%",
+        "icon": "$(list-unordered)"
+      },
+      {
+        "command": "gravity-orchestrator.dev.previewTooltip",
+        "title": "%command.dev.previewTooltip%",
+        "icon": "$(info)"
       }
     ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "gravity-orchestrator.showControlPanel",
+          "when": "true"
+        },
+        {
+          "command": "gravity-orchestrator.quickRefreshQuota",
+          "when": "true"
+        },
+        {
+          "command": "gravity-orchestrator.googleLogin",
+          "when": "true"
+        },
+        {
+          "command": "gravity-orchestrator.dev.previewNotifications",
+          "when": "gravityOrchestrator.isDev"
+        },
+        {
+          "command": "gravity-orchestrator.dev.previewStatusBar",
+          "when": "gravityOrchestrator.isDev"
+        },
+        {
+          "command": "gravity-orchestrator.dev.previewTooltip",
+          "when": "gravityOrchestrator.isDev"
+        }
+      ]
+    },
     "configuration": {
       "title": "Gravity Orchestrator",
       "properties": {
-        "gravityOrchestrator.enabled": {
-          "type": "boolean",
-          "default": true,
-          "description": "%config.enabled%",
-          "order": 10
-        },
-        "gravityOrchestrator.pollingInterval": {
-          "type": "number",
-          "default": 60,
-          "description": "%config.pollingInterval%",
-          "order": 20
-        },
-        "gravityOrchestrator.apiMethod": {
+        "gravityOrchestrator.theme": {
           "type": "string",
-          "default": "GOOGLE_API",
+          "default": "light",
           "enum": [
-            "GET_USER_STATUS",
-            "GOOGLE_API"
+            "light",
+            "dark"
           ],
-          "enumDescriptions": [
-            "%config.apiMethod.getUserStatus%",
-            "%config.apiMethod.googleApi%"
-          ],
-          "description": "%config.apiMethod%",
-          "order": 40
-        },
-        "gravityOrchestrator.forcePowerShell": {
-          "type": "boolean",
-          "default": true,
-          "description": "%config.forcePowerShell%",
-          "order": 75
-        },
-        "gravityOrchestrator.autoSwitchAccount": {
-          "type": "boolean",
-          "default": false,
-          "description": "%config.autoSwitchAccount%",
-          "order": 80
-        },
-        "gravityOrchestrator.switchThreshold": {
-          "type": "number",
-          "default": 10,
-          "minimum": 0,
-          "maximum": 100,
-          "description": "%config.switchThreshold%",
-          "order": 90
+          "description": "%config.theme%",
+          "order": 100
         }
       }
     }

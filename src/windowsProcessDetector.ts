@@ -44,32 +44,32 @@ export class WindowsProcessDetector implements IPlatformStrategy {
 
     /**
      * Parse process output to extract process information.
-     * Hỗ trợ hai định dạng đầu ra: WMIC và PowerShell
+     * Supports two output formats: WMIC and PowerShell
      *
-     * Định dạng WMIC:
+     * WMIC format:
      *   CommandLine=...--extension_server_port=1234 --csrf_token=abc123...
      *   ProcessId=5678
      *
-     * Định dạng JSON PowerShell:
+     * PowerShell JSON format:
      *   {"ProcessId":5678,"CommandLine":"...--extension_server_port=1234 --csrf_token=abc123..."}
-     *   hoặc mảng: [{"ProcessId":5678,"CommandLine":"..."}]
+     *   or array: [{"ProcessId":5678,"CommandLine":"..."}]
      */
     parseProcessInfo(stdout: string): {
         pid: number;
         extensionPort: number;
         csrfToken: string;
     } | null {
-        // Thử phân tích đầu ra JSON PowerShell
+        // Try parsing PowerShell JSON output
         if (this.usePowerShell || stdout.trim().startsWith('{') || stdout.trim().startsWith('[')) {
             try {
                 let data = JSON.parse(stdout.trim());
-                // Nếu là mảng, lọc ra các tiến trình Antigravity
+                // If it's an array, filter for Antigravity processes
                 if (Array.isArray(data)) {
                     if (data.length === 0) {
                         return null;
                     }
                     const totalCount = data.length;
-                    // Lọc ra các tiến trình Antigravity
+                    // Filter for Antigravity processes
                     const antigravityProcesses = data.filter((item: any) =>
                         item.CommandLine && this.isAntigravityProcess(item.CommandLine)
                     );
@@ -83,7 +83,7 @@ export class WindowsProcessDetector implements IPlatformStrategy {
                     }
                     data = antigravityProcesses[0];
                 } else {
-                    // Khi là đối tượng đơn lẻ cũng cần kiểm tra xem có phải tiến trình Antigravity không
+                    // For single objects, also verify if it's an Antigravity process
                     if (!data.CommandLine || !this.isAntigravityProcess(data.CommandLine)) {
                         logger.info('[WindowsProcessDetector] Single process found but not Antigravity, skipping');
                         return null;
@@ -110,13 +110,13 @@ export class WindowsProcessDetector implements IPlatformStrategy {
 
                 return { pid, extensionPort, csrfToken };
             } catch (e) {
-                // Phân tích JSON thất bại, tiếp tục thử định dạng WMIC
+                // JSON parsing failed, continuing with WMIC format attempt
             }
         }
 
-        // Phân tích định dạng đầu ra WMIC
-        // Định dạng đầu ra WMIC là nhiều khối tiến trình, mỗi khối chứa các dòng CommandLine= và ProcessId=
-        // Cần xử lý theo nhóm tiến trình, tránh nhầm lẫn tham số của các tiến trình khác nhau
+        // Parse WMIC output format
+        // WMIC output consists of multiple process blocks, each containing CommandLine= and ProcessId= lines
+        // Must process by groups to avoid parameter confusion between different processes
         const blocks = stdout.split(/\n\s*\n/).filter(block => block.trim().length > 0);
 
         const candidates: Array<{ pid: number; extensionPort: number; csrfToken: string }> = [];
@@ -131,7 +131,7 @@ export class WindowsProcessDetector implements IPlatformStrategy {
 
             const commandLine = commandLineMatch[1].trim();
 
-            // Kiểm tra xem có phải tiến trình Antigravity không
+            // Check if it's an Antigravity process
             if (!this.isAntigravityProcess(commandLine)) {
                 continue;
             }

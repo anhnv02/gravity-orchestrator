@@ -56,7 +56,7 @@ export function registerDevCommands(context: vscode.ExtensionContext) {
                     const key = keyMatch[0] as TranslationKey;
                     const notifyItem = notifyKeys.find(n => n.key === key);
                     if (notifyItem) {
-                        const msg = locService.t(notifyItem.key, { port: '12345', error: 'Lỗi mẫu' });
+                        const msg = locService.t(notifyItem.key, { port: '12345', error: 'Sample error' });
                         await showNotification(notifyItem.type, `[${key}]\n${msg}`);
                     }
                 }

@@ -7,6 +7,14 @@ export {
 } from './googleCloudCodeClient';
 
 export {
-    AntigravityManagerClient,
-    AntigravityManagerError,
-} from './antigravityManagerClient';
+    GravityOrchestratorApi,
+    HealthResponse,
+    AccountResponse,
+    QuotaResponse,
+    ModelQuota,
+    AccountListResponse,
+    CurrentAccountResponse,
+    SwitchResponse,
+    AddAccountResponse,
+    RefreshResponse,
+} from './gravityOrchestratorApi';

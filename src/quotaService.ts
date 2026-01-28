@@ -3,8 +3,9 @@ import * as http from "http";
 import { UserStatusResponse, QuotaSnapshot, PromptCreditsInfo, ModelQuotaInfo } from "./types";
 import { versionInfo } from "./versionInfo";
 import { GoogleAuthService, AuthState } from "./auth";
-import { AntigravityManagerClient, AntigravityManagerError } from "./api";
+import { GoogleCloudCodeClient, GoogleApiError } from "./api";
 import { logger } from "./utils/logger";
+import { formatTimeUntilReset } from "./utils/timeUtils";
 
 
 export enum QuotaApiMethod {
@@ -117,7 +118,7 @@ export class QuotaService {
   private isPollingTransition: boolean = false;
   private csrfToken?: string;
   private googleAuthService: GoogleAuthService;
-  private antigravityManagerClient: AntigravityManagerClient;
+  private googleApiClient: GoogleCloudCodeClient;
   private apiMethod: QuotaApiMethod = QuotaApiMethod.GET_USER_STATUS;
 
   constructor(port: number, csrfToken?: string, httpPort?: number) {
@@ -125,7 +126,7 @@ export class QuotaService {
     this.httpPort = httpPort ?? port;
     this.csrfToken = csrfToken;
     this.googleAuthService = GoogleAuthService.getInstance();
-    this.antigravityManagerClient = AntigravityManagerClient.getInstance();
+    this.googleApiClient = GoogleCloudCodeClient.getInstance();
   }
 
   getApiMethod(): QuotaApiMethod {
@@ -172,12 +173,11 @@ export class QuotaService {
   async startPolling(intervalMs: number): Promise<void> {
 
     if (this.apiMethod === QuotaApiMethod.GOOGLE_API) {
-      // Check if Antigravity-Manager API is available
-      const isHealthy = await this.antigravityManagerClient.healthCheck();
-      if (!isHealthy) {
-        logger.info('[QuotaService] Polling skipped: Antigravity-Manager API not available');
+      const authState = this.googleAuthService.getAuthState();
+      if (authState.state === AuthState.NOT_AUTHENTICATED || authState.state === AuthState.TOKEN_EXPIRED) {
+        logger.info('[QuotaService] Polling skipped: Google auth required');
         if (this.authStatusCallback) {
-          this.authStatusCallback(true, false);
+          this.authStatusCallback(true, authState.state === AuthState.TOKEN_EXPIRED);
         }
         this.stopPolling();
         this.consecutiveErrors = 0;
@@ -263,7 +263,7 @@ export class QuotaService {
       let snapshot: QuotaSnapshot;
       switch (this.apiMethod) {
         case QuotaApiMethod.GOOGLE_API: {
-          logger.info('Using Antigravity-Manager API');
+          logger.info('Using Google API (direct)');
 
           const result = await this.handleGoogleApiQuota();
           if (result === null) {
@@ -399,11 +399,11 @@ export class QuotaService {
   }
 
   private isAuthError(error: any): boolean {
-    if (error instanceof AntigravityManagerError && error.needsReauth()) {
+    if (error instanceof GoogleApiError && error.needsReauth()) {
       return true;
     }
     const message = (error?.message || '').toLowerCase();
-    return message.includes('not authenticated') || message.includes('unauthorized') || message.includes('invalid_grant') || message.includes('no current account');
+    return message.includes('not authenticated') || message.includes('unauthorized') || message.includes('invalid_grant');
   }
 
   private async makeGetUserStatusRequest(): Promise<any> {
@@ -427,17 +427,31 @@ export class QuotaService {
   }
 
   private async handleGoogleApiQuota(): Promise<QuotaSnapshot | null> {
-    // Check if Antigravity-Manager API is available
-    const isHealthy = await this.antigravityManagerClient.healthCheck();
-    if (!isHealthy) {
-      logger.warn('Antigravity-Manager API: Server not available, marking as stale');
-      if (this.staleCallback) {
-        this.staleCallback(true);
-      }
+    const authState = this.googleAuthService.getAuthState();
+
+    if (authState.state === AuthState.NOT_AUTHENTICATED) {
+      logger.info('Google API: Not authenticated, showing login prompt');
       if (this.authStatusCallback) {
         this.authStatusCallback(true, false);
       }
+
       this.isFirstAttempt = false;
+      return null;
+    }
+
+    if (authState.state === AuthState.TOKEN_EXPIRED) {
+      logger.info('Google API: Token expired, showing re-auth prompt');
+      if (this.authStatusCallback) {
+        this.authStatusCallback(true, true);
+      }
+
+      this.isFirstAttempt = false;
+      return null;
+    }
+
+    if (authState.state === AuthState.AUTHENTICATING || authState.state === AuthState.REFRESHING) {
+      logger.info('Google API: Authentication in progress, skipping this cycle');
+
       return null;
     }
 
@@ -446,17 +460,27 @@ export class QuotaService {
 
   private async fetchQuotaViaGoogleApi(): Promise<QuotaSnapshot> {
     try {
-      logger.info('Antigravity-Manager API: Loading project info...');
-      const projectInfo = await this.antigravityManagerClient.loadProjectInfo();
-      logger.info('Antigravity-Manager API: Project info loaded:', projectInfo.tier);
 
-      logger.info('Antigravity-Manager API: Fetching models quota...');
-      const modelsQuota = await this.antigravityManagerClient.fetchModelsQuota();
-      logger.info('Antigravity-Manager API: Models quota fetched:', modelsQuota.models.length, 'models');
+      const accessToken = await this.googleAuthService.getValidAccessToken();
 
-      // Get current account for email
-      const currentAccount = await this.antigravityManagerClient.getCurrentAccount();
-      const userEmail = currentAccount.account?.email;
+      let userEmail: string | undefined;
+      try {
+        const userInfo = await this.googleAuthService.fetchUserInfo(accessToken);
+        userEmail = userInfo.email;
+        logger.info('Google API: User email:', userEmail);
+      } catch (e) {
+        logger.warn('Google API: Failed to fetch user info:', e);
+
+        userEmail = this.googleAuthService.getUserEmail();
+      }
+
+      logger.info('Google API: Loading project info...');
+      const projectInfo = await this.googleApiClient.loadProjectInfo(accessToken);
+      logger.info('Google API: Project info loaded:', projectInfo.tier);
+
+      logger.info('Google API: Fetching models quota...');
+      const modelsQuota = await this.googleApiClient.fetchModelsQuota(accessToken, projectInfo.projectId);
+      logger.info('Google API: Models quota fetched:', modelsQuota.models.length, 'models');
 
       if (this.authStatusCallback) {
         this.authStatusCallback(false, false);
@@ -474,7 +498,7 @@ export class QuotaService {
           isExhausted: model.isExhausted,
           resetTime,
           timeUntilReset,
-          timeUntilResetFormatted: this.formatTimeUntilReset(timeUntilReset),
+          timeUntilResetFormatted: formatTimeUntilReset(timeUntilReset),
         };
       });
 
@@ -486,9 +510,9 @@ export class QuotaService {
         userEmail,
       };
     } catch (error) {
-      if (error instanceof AntigravityManagerError) {
+      if (error instanceof GoogleApiError) {
         if (error.needsReauth()) {
-          logger.info('Antigravity-Manager API: Auth error, need to re-authenticate');
+          logger.info('Google API: Token invalid, need to re-authenticate');
           if (this.authStatusCallback) {
             this.authStatusCallback(true, true);
           }
@@ -554,29 +578,10 @@ export class QuotaService {
       isExhausted: remainingFraction === undefined || remainingFraction === 0,
       resetTime,
       timeUntilReset,
-      timeUntilResetFormatted: this.formatTimeUntilReset(timeUntilReset)
+      timeUntilResetFormatted: formatTimeUntilReset(timeUntilReset)
     };
   }
 
-  private formatTimeUntilReset(ms: number): string {
-    if (ms <= 0) {
-      return 'Expired';
-    }
-
-    const seconds = Math.floor(ms / 1000);
-    const minutes = Math.floor(seconds / 60);
-    const hours = Math.floor(minutes / 60);
-    const days = Math.floor(hours / 24);
-
-    if (days > 0) {
-      return `${days}d${hours % 24}h from now`;
-    } else if (hours > 0) {
-      return `${hours}h ${minutes % 60}m from now`;
-    } else if (minutes > 0) {
-      return `${minutes}m ${seconds % 60}s from now`;
-    }
-    return `${seconds}s from now`;
-  }
 
   private getInvalidCodeInfo(response: any): { code: any; message?: any } | null {
     const code = response?.code;

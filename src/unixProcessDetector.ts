@@ -112,10 +112,10 @@ export class UnixProcessDetector implements IPlatformStrategy {
                 continue;
             }
 
-            // Kiểm tra phòng thủ: Bỏ qua tiến trình wrapper graftcp
-            // graftcp là công cụ dùng để proxy language_server, bản thân nó không lắng nghe cổng
-            // Định dạng dòng lệnh như: /opt/graftcp/graftcp /path/to/language_server_linux_x64.bak ...
-            const executable = parts[2]; // Phần đầu của dòng lệnh (file thực thi)
+            // Defensive check: Skip graftcp wrapper processes
+            // graftcp is a tool used to proxy language_server; it doesn't listen on any ports itself.
+            // Command line format like: /opt/graftcp/graftcp /path/to/language_server_linux_x64.bak ...
+            const executable = parts[2]; // First part of the command line (executable)
             if (executable.includes('graftcp')) {
                 continue;
             }
@@ -123,7 +123,7 @@ export class UnixProcessDetector implements IPlatformStrategy {
             const portMatch = cmd.match(/--extension_server_port[=\s]+(\d+)/);
             const tokenMatch = cmd.match(/--csrf_token[=\s]+([a-f0-9-]+)/i);
 
-            // Phải đồng thời thỏa mãn: Có csrf_token và là tiến trình Antigravity
+            // Must satisfy both: Has csrf_token and is an Antigravity process
             if (tokenMatch && tokenMatch[1] && this.isAntigravityProcess(cmd)) {
                 const extensionPort = portMatch && portMatch[1] ? parseInt(portMatch[1], 10) : 0;
                 const csrfToken = tokenMatch[1];
