@@ -28,7 +28,9 @@ export class StatusBarService {
             vscode.StatusBarAlignment.Right,
             100
         );
+        this.statusBarItem.text = '$(sync~spin) Gravity Orchestrator';
         this.statusBarItem.command = 'gravity-orchestrator.showControlPanel';
+        this.statusBarItem.show();
     }
 
     async updateDisplayFromApp(fallbackSnapshot?: QuotaSnapshot): Promise<void> {

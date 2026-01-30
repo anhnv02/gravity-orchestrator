@@ -52,6 +52,7 @@ export async function activate(context: vscode.ExtensionContext) {
         logger.info('[Extension] Antigravity Tools app is ready, using app API for status bar');
         statusBarService.updateDisplayFromApp().catch(error => {
             logger.error('[Extension] Failed to initialize status bar from app API:', error);
+            statusBarService!.show();
         });
     } else {
         logger.info('[Extension] Antigravity Tools app is not ready, will use GOOGLE_API');
