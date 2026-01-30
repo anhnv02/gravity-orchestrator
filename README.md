@@ -1,6 +1,6 @@
 # Gravity Orchestrator
 
-![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)
+![Version](https://img.shields.io/badge/version-1.0.1-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 
 **Gravity Orchestrator** is a powerful VS Code extension designed to monitor and manage your AI model quotas for the Antigravity IDE ecosystem. It provides real-time status updates, multi-account management, and detailed usage insights directly within your editor.

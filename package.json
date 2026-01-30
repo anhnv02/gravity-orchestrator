@@ -2,7 +2,7 @@
   "name": "gravity-orchestrator",
   "displayName": "Gravity Orchestrator",
   "description": "Displays real-time AI model quota status for Antigravity IDE",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "publisher": "AnhNguyen02",
   "icon": "icon.png",
   "engines": {
