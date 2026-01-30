@@ -1,0 +1,76 @@
+export type TranslationKey =
+
+    | 'status.initializing'
+    | 'status.detecting'
+    | 'status.fetching'
+    | 'status.retrying'
+    | 'status.error'
+    | 'status.refreshing'
+    | 'status.notLoggedIn'
+    | 'status.loggingIn'
+    | 'status.loginExpired'
+    | 'status.stale'
+
+    | 'tooltip.title'
+    | 'tooltip.credits'
+    | 'tooltip.available'
+    | 'tooltip.remaining'
+    | 'tooltip.depleted'
+    | 'tooltip.resetTime'
+    | 'tooltip.model'
+    | 'tooltip.status'
+    | 'tooltip.error'
+    | 'tooltip.clickToRetry'
+    | 'tooltip.clickToLogin'
+    | 'tooltip.clickToRelogin'
+    | 'tooltip.staleWarning'
+
+    | 'notify.unableToDetectProcess'
+    | 'notify.retry'
+    | 'notify.cancel'
+    | 'notify.refreshingQuota'
+    | 'notify.detectionSuccess'
+    | 'notify.unableToDetectPort'
+    | 'notify.unableToDetectPortHint1'
+    | 'notify.unableToDetectPortHint2'
+    | 'notify.portDetectionFailed'
+    | 'notify.configUpdated'
+    | 'notify.nonAntigravityDetected'
+    | 'notify.switchToGoogleApi'
+    | 'notify.keepLocalApi'
+    | 'notify.neverShowAgain'
+    | 'notify.portCommandRequired'
+    | 'notify.portCommandRequiredDarwin'
+    | 'notify.googleApiNoPortDetection'
+    | 'notify.pleaseLoginFirst'
+
+    | 'login.error.serviceNotInitialized'
+    | 'login.error.authFailed'
+
+    | 'notify.localTokenDetected'
+    | 'notify.useLocalToken'
+    | 'notify.manualLogin'
+
+    | 'notify.tokenChanged'
+    | 'notify.tokenRemoved'
+    | 'notify.syncToken'
+    | 'notify.keepCurrentToken'
+    | 'notify.syncLogout'
+    | 'notify.keepLogin'
+
+    | 'login.success.google'
+    | 'login.success.localToken'
+    | 'login.error.google'
+    | 'login.error.localToken'
+    | 'logout.success'
+
+    | 'devTools.previewComplete'
+    | 'devTools.stop'
+    | 'common.yes'
+    | 'common.no'
+    | 'notify.lowQuotaError'
+    | 'notify.allAccountsLowQuota';
+
+export interface TranslationMap {
+    [key: string]: string;
+}

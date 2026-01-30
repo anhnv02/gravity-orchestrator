@@ -1,0 +1,130 @@
+{
+  "name": "gravity-orchestrator",
+  "displayName": "Gravity Orchestrator",
+  "description": "Displays real-time AI model quota status for Antigravity IDE",
+  "version": "1.0.0",
+  "publisher": "AnhNguyen02",
+  "icon": "icon.png",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/anhnv02/gravity-orchestrator.git"
+  },
+  "homepage": "https://github.com/anhnv02/gravity-orchestrator#readme",
+  "bugs": {
+    "url": "https://github.com/anhnv02/gravity-orchestrator/issues"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "gravity-orchestrator.showControlPanel",
+        "title": "%command.showControlPanel%",
+        "icon": "$(dashboard)"
+      },
+      {
+        "command": "gravity-orchestrator.quickRefreshQuota",
+        "title": "%command.quickRefreshQuota%",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "gravity-orchestrator.googleLogin",
+        "title": "%command.googleLogin%",
+        "icon": "$(sign-in)"
+      },
+      {
+        "command": "gravity-orchestrator.dev.previewNotifications",
+        "title": "%command.dev.previewNotifications%",
+        "icon": "$(megaphone)"
+      },
+      {
+        "command": "gravity-orchestrator.dev.previewStatusBar",
+        "title": "%command.dev.previewStatusBar%",
+        "icon": "$(list-unordered)"
+      },
+      {
+        "command": "gravity-orchestrator.dev.previewTooltip",
+        "title": "%command.dev.previewTooltip%",
+        "icon": "$(info)"
+      }
+    ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "gravity-orchestrator.showControlPanel",
+          "when": "true"
+        },
+        {
+          "command": "gravity-orchestrator.quickRefreshQuota",
+          "when": "true"
+        },
+        {
+          "command": "gravity-orchestrator.googleLogin",
+          "when": "true"
+        },
+        {
+          "command": "gravity-orchestrator.dev.previewNotifications",
+          "when": "gravityOrchestrator.isDev"
+        },
+        {
+          "command": "gravity-orchestrator.dev.previewStatusBar",
+          "when": "gravityOrchestrator.isDev"
+        },
+        {
+          "command": "gravity-orchestrator.dev.previewTooltip",
+          "when": "gravityOrchestrator.isDev"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Gravity Orchestrator",
+      "properties": {
+        "gravityOrchestrator.theme": {
+          "type": "string",
+          "default": "light",
+          "enum": [
+            "light",
+            "dark"
+          ],
+          "description": "%config.theme%",
+          "order": 100
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "lint": "eslint src --ext ts",
+    "package": "npx vsce package"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.85.0",
+    "@typescript-eslint/eslint-plugin": "^6.0.0",
+    "@typescript-eslint/parser": "^6.0.0",
+    "eslint": "^8.0.0",
+    "typescript": "^5.3.0"
+  },
+  "dependencies": {
+    "@vscode/codicons": "^0.0.44",
+    "sql.js": "^1.13.0"
+  },
+  "keywords": [
+    "antigravity",
+    "quota",
+    "monitor",
+    "ai"
+  ],
+  "author": "AnhNguyen02",
+  "license": "MIT"
+}

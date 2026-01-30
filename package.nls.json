@@ -1,0 +1,9 @@
+{
+    "command.showControlPanel": "Gravity Orchestrator: Show Control Panel",
+    "command.quickRefreshQuota": "Gravity Orchestrator: Quick Refresh Quota",
+    "command.googleLogin": "Gravity Orchestrator: Login with Google",
+    "command.dev.previewNotifications": "Gravity Orchestrator Dev: Preview Notifications",
+    "command.dev.previewStatusBar": "Gravity Orchestrator Dev: Preview Status Bar",
+    "command.dev.previewTooltip": "Gravity Orchestrator Dev: Preview Tooltip",
+    "config.theme": "Theme preference for the Control Panel interface"
+}
