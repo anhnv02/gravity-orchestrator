@@ -1,10 +1,12 @@
 import * as path from 'path';
 import * as os from 'os';
 import * as fs from 'fs';
+import { logger } from './logger';
 
 // External dependency: sql.js
 // Consumers of this module need to ensure sql.js is installed: `npm install sql.js`
-// Using require to avoid TypeScript definition issues with current sql.js version
+// Using dynamic import to avoid TypeScript definition issues
+// eslint-disable-next-line @typescript-eslint/no-var-requires
 const initSqlJs = require('sql.js');
 
 /**
@@ -61,7 +63,7 @@ export class AntigravityClient {
                 try {
                     AntigravityClient.sqlEngine = await initSqlJs();
                 } catch (error) {
-                    console.error('AntigravityClient: Failed to initialize SQL.js:', error);
+                    logger.error('AntigravityClient: Failed to initialize SQL.js:', error);
                     AntigravityClient.initPromise = null;
                     throw error;
                 }
@@ -149,7 +151,7 @@ export class AntigravityClient {
                 return obj;
             });
         } catch (error) {
-            console.error(`AntigravityClient: Error querying database ${dbFile}:`, error);
+            logger.error(`AntigravityClient: Error querying database ${dbFile}:`, error);
             return [];
         } finally {
             if (db) {
@@ -214,7 +216,7 @@ export class AntigravityClient {
                 status: 'Active'
             };
         } catch (error) {
-            console.error('AntigravityClient: Error reading account info:', error);
+            logger.error('AntigravityClient: Error reading account info:', error);
             return null;
         }
     }
@@ -253,7 +255,7 @@ export class AntigravityClient {
 
             return AntigravityClient.MODEL_PATTERNS.filter(pattern => decoded.includes(pattern));
         } catch (error) {
-            console.error('AntigravityClient: Error reading models:', error);
+            logger.error('AntigravityClient: Error reading models:', error);
             return [];
         }
     }

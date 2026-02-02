@@ -1,49 +1,4 @@
-export interface ModelConfig {
-  label: string;
-  modelOrAlias: {
-    model: string;
-  };
-  quotaInfo?: {
-    remainingFraction?: number;
-    resetTime: string;
-  };
-  supportsImages?: boolean;
-  isRecommended?: boolean;
-  allowedTiers?: string[];
-}
 
-export interface UserStatusResponse {
-  userStatus: {
-    name: string;
-    email: string;
-    planStatus?: {
-      planInfo: {
-        teamsTier: string;
-        planName: string;
-        monthlyPromptCredits: number;
-        monthlyFlowCredits: number;
-      };
-      availablePromptCredits: number;
-      availableFlowCredits: number;
-    };
-    cascadeModelConfigData?: {
-      clientModelConfigs: ModelConfig[];
-    };
-
-    userTier?: {
-      id: string;
-      name: string;
-      description: string;
-    };
-  };
-}
-
-export interface PromptCreditsInfo {
-  available: number;
-  monthly: number;
-  usedPercentage: number;
-  remainingPercentage: number;
-}
 
 export interface ModelQuotaInfo {
   label: string;
@@ -58,7 +13,7 @@ export interface ModelQuotaInfo {
 
 export interface QuotaSnapshot {
   timestamp: Date;
-  promptCredits?: PromptCreditsInfo;
+
   models: ModelQuotaInfo[];
   planName?: string;
   userEmail?: string;

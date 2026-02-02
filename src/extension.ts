@@ -2,31 +2,29 @@ import * as vscode from 'vscode';
 import { QuotaService, QuotaApiMethod } from './quotaService';
 import { StatusBarService } from './statusBar';
 import { ConfigService } from './configService';
-import { PortDetectionService } from './portDetectionService';
+
 import { Config, QuotaSnapshot } from './types';
 import { LocalizationService } from './i18n/localizationService';
 import { versionInfo } from './versionInfo';
 import { registerDevCommands } from './devTools';
 import { GoogleAuthService, AuthState, AuthStateInfo, extractRefreshTokenFromAntigravity, hasAntigravityDb, TokenSyncChecker } from './auth';
-import { ControlPanel } from './controlPanel';
-import { clearAccountUsageCache } from './utils/accountUtils';
+
 import { logger } from './utils/logger';
-
-
+import { GravitySidebarProvider } from './sidebar/sidebarProvider';
 
 let quotaService: QuotaService | undefined;
 let statusBarService: StatusBarService | undefined;
 let configService: ConfigService | undefined;
-let portDetectionService: PortDetectionService | undefined;
+
 let googleAuthService: GoogleAuthService | undefined;
+let sidebarProvider: GravitySidebarProvider | undefined;
 let lastQuotaSnapshot: QuotaSnapshot | undefined;
 let configChangeTimer: NodeJS.Timeout | undefined;
 let localTokenCheckTimer: NodeJS.Timeout | undefined;
-let lastFocusRefreshTime: number = 0;
-const FOCUS_REFRESH_THROTTLE_MS = 3000;
-const AUTO_REDETECT_THROTTLE_MS = 30000;
+
+
 const LOCAL_TOKEN_CHECK_INTERVAL_MS = 30000;
-let lastAutoRedetectTime: number = 0;
+
 
 export async function activate(context: vscode.ExtensionContext) {
     logger.initialize(context);
@@ -41,21 +39,22 @@ export async function activate(context: vscode.ExtensionContext) {
 
     const localizationService = LocalizationService.getInstance();
 
-
     statusBarService = new StatusBarService();
 
-    // Check if Antigravity Tools app is available first
+    // Check if Gravity Orchestrator app is available first
     const { GravityOrchestratorApi } = await import('./api/gravityOrchestratorApi');
     const isAppApiReady = await GravityOrchestratorApi.isApiReady();
     
     if (isAppApiReady) {
-        logger.info('[Extension] Antigravity Tools app is ready, using app API for status bar');
+        logger.info('[Extension] Gravity Orchestrator app is ready, using app API for status bar');
         statusBarService.updateDisplayFromApp().catch(error => {
             logger.error('[Extension] Failed to initialize status bar from app API:', error);
-            statusBarService!.show();
+            if (statusBarService) { 
+                statusBarService.show(); 
+            }
         });
     } else {
-        logger.info('[Extension] Antigravity Tools app is not ready, will use GOOGLE_API');
+        logger.info('[Extension] Gravity Orchestrator app is not ready, will use GOOGLE_API');
         statusBarService.showInitializing();
     }
 
@@ -64,28 +63,20 @@ export async function activate(context: vscode.ExtensionContext) {
 
     await autoAddAccountFromIde();
 
-    // Always use GOOGLE_API method for quota polling (Antigravity Tools app data is fetched separately)
-    await initializeGoogleApiMethod(context, config, localizationService);
-
-    const showControlPanelCommand = vscode.commands.registerCommand(
-        'gravity-orchestrator.showControlPanel',
-        () => {
-            ControlPanel.createOrShow(context.extensionUri);
-            if (lastQuotaSnapshot) {
-                ControlPanel.update(lastQuotaSnapshot);
-            }
-        }
-    );
+    // Always use GOOGLE_API method for quota polling (Gravity Orchestrator app data is fetched separately)
+    await initializeGoogleApiMethod(context, config, localizationService, statusBarService, googleAuthService);
 
     const quickRefreshQuotaCommand = vscode.commands.registerCommand(
         'gravity-orchestrator.quickRefreshQuota',
         async () => {
+            if (!statusBarService || !configService) {return;}
+
             logger.info('[Extension] quickRefreshQuota command invoked');
 
-            await statusBarService?.updateDisplayFromApp();
+            await statusBarService.updateDisplayFromApp();
 
             if (!quotaService) {
-                config = configService!.getConfig();
+                config = configService.getConfig();
                 const currentApiMethod = getApiMethodFromConfig(config.apiMethod);
 
                 if (currentApiMethod === QuotaApiMethod.GOOGLE_API) {
@@ -93,10 +84,9 @@ export async function activate(context: vscode.ExtensionContext) {
                     vscode.window.showInformationMessage(
                         localizationService.t('notify.pleaseLoginFirst')
                     );
-                } else {
-                    logger.info('[Extension] quotaService not initialized, delegating to detectPort command');
-                    await vscode.commands.executeCommand('gravity-orchestrator.detectPort');
                 }
+
+
                 return;
             }
 
@@ -108,9 +98,11 @@ export async function activate(context: vscode.ExtensionContext) {
     const refreshQuotaCommand = vscode.commands.registerCommand(
         'gravity-orchestrator.refreshQuota',
         async () => {
+            if (!statusBarService || !configService) {return;}
+
             logger.info('[Extension] refreshQuota command invoked');
             if (!quotaService) {
-                config = configService!.getConfig();
+                config = configService.getConfig();
                 const currentApiMethod = getApiMethodFromConfig(config.apiMethod);
 
                 if (currentApiMethod === QuotaApiMethod.GOOGLE_API) {
@@ -118,134 +110,42 @@ export async function activate(context: vscode.ExtensionContext) {
                     vscode.window.showInformationMessage(
                         localizationService.t('notify.pleaseLoginFirst')
                     );
-                } else {
-                    logger.info('[Extension] quotaService not initialized, delegating to detectPort command');
-                    await vscode.commands.executeCommand('gravity-orchestrator.detectPort');
                 }
+
+
                 return;
             }
 
             vscode.window.showInformationMessage(localizationService.t('notify.refreshingQuota'));
-            config = configService!.getConfig();
-            statusBarService?.showFetching();
+            config = configService.getConfig();
+            statusBarService.showFetching();
 
             if (config.enabled) {
                 quotaService.setApiMethod(getApiMethodFromConfig(config.apiMethod));
-
                 await quotaService.retryFromError(config.pollingInterval);
             }
         }
     );
 
-    const detectPortCommand = vscode.commands.registerCommand(
-        'gravity-orchestrator.detectPort',
-        async () => {
-            logger.info('[Extension] detectPort command invoked');
 
-            config = configService!.getConfig();
-            const currentApiMethod = getApiMethodFromConfig(config.apiMethod);
-
-            if (currentApiMethod === QuotaApiMethod.GOOGLE_API) {
-                logger.info('[Extension] detectPort: GOOGLE_API method does not need port detection');
-                vscode.window.showInformationMessage(
-                    localizationService.t('notify.googleApiNoPortDetection')
-                );
-                return;
-            }
-
-            if (!portDetectionService) {
-                portDetectionService = new PortDetectionService(context);
-            }
-
-            statusBarService?.showDetecting();
-
-            try {
-                logger.info('[Extension] detectPort: invoking portDetectionService');
-                const result = await portDetectionService?.detectPort();
-
-                if (result && result.port && result.csrfToken) {
-                    logger.info('[Extension] detectPort command succeeded:', result);
-
-                    if (quotaService) {
-                        quotaService.dispose();
-                    }
-
-                    quotaService = new QuotaService();
-                    quotaService.setPorts(result.connectPort, result.httpPort);
-
-                    registerQuotaServiceCallbacks();
-
-                    statusBarService?.clearError();
-
-                    quotaService.stopPolling();
-                    quotaService.setApiMethod(QuotaApiMethod.GOOGLE_API);
-                    quotaService.startPolling(config.pollingInterval);
-
-                    vscode.window.showInformationMessage(localizationService.t('notify.detectionSuccess', { port: result.port }));
-                } else {
-                    logger.warn('[Extension] detectPort command did not return valid ports');
-                    vscode.window.showErrorMessage(
-                        localizationService.t('notify.unableToDetectPort') + '\n' +
-                        localizationService.t('notify.unableToDetectPortHint1') + '\n' +
-                        localizationService.t('notify.unableToDetectPortHint2')
-                    );
-                }
-            } catch (error: any) {
-                const errorMsg = error?.message || String(error);
-                logger.error('Port detection failed:', errorMsg);
-                if (error?.stack) {
-                    logger.error('Stack:', error.stack);
-                }
-                vscode.window.showErrorMessage(localizationService.t('notify.portDetectionFailed', { error: errorMsg }));
-            }
-        }
-    );
 
     const configChangeDisposable = configService.onConfigChange((newConfig) => {
         handleConfigChange(newConfig as Config);
     });
 
-    const windowFocusDisposable = vscode.window.onDidChangeWindowState((e) => {
-        if (!e.focused) {
-            return;
-        }
 
-        const currentConfig = configService?.getConfig();
-        if (!currentConfig?.enabled) {
-            return;
-        }
-
-        if (getApiMethodFromConfig(currentConfig.apiMethod) === QuotaApiMethod.GOOGLE_API) {
-            logger.info('[FocusRefresh] GOOGLE_API mode, skip focus-triggered refresh');
-            return;
-        }
-
-        if (!quotaService) {
-            logger.info('[FocusRefresh] quotaService not initialized, skipping');
-            return;
-        }
-
-        const now = Date.now();
-        if (now - lastFocusRefreshTime < FOCUS_REFRESH_THROTTLE_MS) {
-            logger.info('[FocusRefresh] Throttled, skipping refresh');
-            return;
-        }
-        lastFocusRefreshTime = now;
-
-        logger.info('[FocusRefresh] Window focused, triggering quota refresh');
-        quotaService.quickRefresh();
-    });
 
     const googleLoginCommand = vscode.commands.registerCommand(
         'gravity-orchestrator.googleLogin',
         async () => {
-            logger.info('[Extension] googleLogin command invoked');
-            if (!googleAuthService) {
+            if (!googleAuthService || !configService || !statusBarService) {
                 vscode.window.showErrorMessage(localizationService.t('login.error.serviceNotInitialized'));
                 return;
             }
 
-            statusBarService?.showLoggingIn();
+            logger.info('[Extension] googleLogin command invoked');
+            
+            statusBarService.showLoggingIn();
             const success = await googleAuthService.login();
             if (success) {
                 const userEmail = googleAuthService.getUserEmail();
@@ -253,7 +153,7 @@ export async function activate(context: vscode.ExtensionContext) {
                     await syncAccountToApp(userEmail);
                 }
 
-                config = configService!.getConfig();
+                config = configService.getConfig();
                 if (config.apiMethod === 'GOOGLE_API' && quotaService) {
                     if (config.enabled) {
                         await quotaService.startPolling(config.pollingInterval);
@@ -261,7 +161,7 @@ export async function activate(context: vscode.ExtensionContext) {
                     await quotaService.quickRefresh();
                 }
             } else {
-                statusBarService?.showNotLoggedIn();
+                statusBarService.showNotLoggedIn();
             }
         }
     );
@@ -269,10 +169,9 @@ export async function activate(context: vscode.ExtensionContext) {
     const googleLogoutCommand = vscode.commands.registerCommand(
         'gravity-orchestrator.googleLogout',
         async () => {
+            if (!googleAuthService || !configService || !statusBarService) {return;}
+
             logger.info('[Extension] googleLogout command invoked');
-            if (!googleAuthService) {
-                return;
-            }
 
             const userEmail = googleAuthService.getUserEmail();
             const wasLoggedIn = await googleAuthService.logout();
@@ -292,25 +191,14 @@ export async function activate(context: vscode.ExtensionContext) {
                 vscode.window.showInformationMessage(localizationService.t('logout.success'));
             }
 
-            config = configService!.getConfig();
+            config = configService.getConfig();
             if (config.apiMethod === 'GOOGLE_API') {
                 lastQuotaSnapshot = undefined;
-                clearAccountUsageCache();
                 quotaService?.stopPolling();
-                statusBarService?.clearStale();
-                statusBarService?.showNotLoggedIn();
-                ControlPanel.update(undefined);
-            }
-
-        }
-    );
-
-    const showAccountsCommand = vscode.commands.registerCommand(
-        'gravity-orchestrator.showAccounts',
-        () => {
-            ControlPanel.createOrShow(context.extensionUri, 'account');
-            if (lastQuotaSnapshot) {
-                ControlPanel.update(lastQuotaSnapshot);
+                statusBarService.clearStale();
+                statusBarService.showNotLoggedIn();
+                
+                sidebarProvider?.update(undefined);
             }
         }
     );
@@ -318,13 +206,14 @@ export async function activate(context: vscode.ExtensionContext) {
     const googleAddAccountCommand = vscode.commands.registerCommand(
         'gravity-orchestrator.googleAddAccount',
         async () => {
-            logger.info('[Extension] googleAddAccount command invoked');
-            if (!googleAuthService) {
+             if (!googleAuthService || !configService || !statusBarService) {
                 vscode.window.showErrorMessage(localizationService.t('login.error.serviceNotInitialized'));
                 return;
             }
 
-            statusBarService?.showLoggingIn();
+            logger.info('[Extension] googleAddAccount command invoked');
+
+            statusBarService.showLoggingIn();
             const success = await googleAuthService.addAccount();
             if (success) {
                 const userEmail = googleAuthService.getUserEmail();
@@ -332,12 +221,14 @@ export async function activate(context: vscode.ExtensionContext) {
                     await syncAccountToApp(userEmail);
                 }
 
-                statusBarService?.updateDisplayFromApp().catch(error => {
+                statusBarService.updateDisplayFromApp().catch(error => {
                     logger.error('[Extension] Failed to update status bar:', error);
                 });
-                ControlPanel.update(undefined); // Force refresh Control Panel
+                
+                // Force Update Sidebar
+                sidebarProvider?.update(undefined);
 
-                config = configService!.getConfig();
+                config = configService.getConfig();
                 if (config.apiMethod === 'GOOGLE_API' && quotaService) {
                     if (config.enabled) {
                         await quotaService.startPolling(config.pollingInterval);
@@ -345,7 +236,7 @@ export async function activate(context: vscode.ExtensionContext) {
                     await quotaService.quickRefresh();
                 }
             } else {
-                statusBarService?.showNotLoggedIn();
+                statusBarService.showNotLoggedIn();
             }
         }
     );
@@ -353,11 +244,12 @@ export async function activate(context: vscode.ExtensionContext) {
     const googleSwitchAccountCommand = vscode.commands.registerCommand(
         'gravity-orchestrator.googleSwitchAccount',
         async (email: string) => {
-            logger.info('[Extension] googleSwitchAccount command invoked for:', email);
-            if (!googleAuthService) {
+            if (!googleAuthService || !configService || !statusBarService) {
                 vscode.window.showErrorMessage(localizationService.t('login.error.serviceNotInitialized'));
                 return;
             }
+
+            logger.info('[Extension] googleSwitchAccount command invoked for:', email);
 
             const success = await googleAuthService.switchAccount(email);
             if (success) {
@@ -376,15 +268,14 @@ export async function activate(context: vscode.ExtensionContext) {
                 }
 
                 lastQuotaSnapshot = undefined;
-                clearAccountUsageCache();
-                statusBarService?.showFetching();
+                statusBarService.showFetching();
 
                 // Wait a brief moment for app to update its internal state before refreshing UI
                 await new Promise(resolve => setTimeout(resolve, 500));
+                
+                sidebarProvider?.update(undefined);
 
-                ControlPanel.update(undefined);
-
-                config = configService!.getConfig();
+                config = configService.getConfig();
                 if (config.apiMethod === 'GOOGLE_API' && quotaService) {
                     if (config.enabled) {
                         await quotaService.startPolling(config.pollingInterval);
@@ -401,10 +292,9 @@ export async function activate(context: vscode.ExtensionContext) {
     const googleLogoutAccountCommand = vscode.commands.registerCommand(
         'gravity-orchestrator.googleLogoutAccount',
         async (email: string, accountId?: string) => {
+            if (!googleAuthService || !configService || !statusBarService) {return;}
+
             logger.info('[Extension] googleLogoutAccount command invoked for:', email, accountId);
-            if (!googleAuthService) {
-                return;
-            }
 
             await googleAuthService.logoutAccount(email);
             vscode.window.showInformationMessage(`Removed account: ${email}`);
@@ -422,30 +312,29 @@ export async function activate(context: vscode.ExtensionContext) {
                 logger.error('[Extension] Failed to remove account from app:', e);
             }
 
-            config = configService!.getConfig();
+            config = configService.getConfig();
             const activeAccount = await googleAuthService.getActiveAccount();
 
             // Clear snapshots to force fresh fetch
             lastQuotaSnapshot = undefined;
-            clearAccountUsageCache();
 
             if (config.apiMethod === 'GOOGLE_API') {
                 if (!activeAccount) {
                     quotaService?.stopPolling();
-                    statusBarService?.clearStale();
-                    statusBarService?.showNotLoggedIn();
-                    ControlPanel.update(undefined);
+                    statusBarService.clearStale();
+                    statusBarService.showNotLoggedIn();
+                    
+                    sidebarProvider?.update(undefined);
                 } else {
                     // Re-start polling and refresh for the new active account
                     if (config.enabled && quotaService) {
                         await quotaService.startPolling(config.pollingInterval);
                         await quotaService.quickRefresh();
                     }
-                    ControlPanel.update(undefined);
+                    sidebarProvider?.update(undefined);
                 }
             } else {
-                // Local API mode - just refresh UI to show updated account list from app
-                ControlPanel.update(undefined);
+                sidebarProvider?.update(undefined);
                 if (config.enabled && quotaService) {
                     await quotaService.quickRefresh();
                 }
@@ -468,62 +357,68 @@ export async function activate(context: vscode.ExtensionContext) {
                     quotaService?.startPolling(currentConfig.pollingInterval);
                     quotaService?.quickRefresh();
                 }
-                ControlPanel.update(lastQuotaSnapshot);
+                sidebarProvider?.update(lastQuotaSnapshot);
                 break;
             case AuthState.NOT_AUTHENTICATED:
                 quotaService?.stopPolling();
                 statusBarService?.clearStale();
                 statusBarService?.showNotLoggedIn();
                 startLocalTokenCheckTimer();
-                ControlPanel.update(lastQuotaSnapshot);
+                sidebarProvider?.update(lastQuotaSnapshot);
                 break;
             case AuthState.TOKEN_EXPIRED:
                 quotaService?.stopPolling();
                 statusBarService?.clearStale();
                 statusBarService?.showLoginExpired();
                 startLocalTokenCheckTimer();
-                ControlPanel.update(lastQuotaSnapshot);
+                sidebarProvider?.update(lastQuotaSnapshot);
                 break;
             case AuthState.AUTHENTICATING:
                 statusBarService?.showLoggingIn();
-                ControlPanel.update(lastQuotaSnapshot);
+                sidebarProvider?.update(lastQuotaSnapshot);
                 break;
             case AuthState.ERROR:
                 statusBarService?.showError(localizationService.t('login.error.authFailed'));
-                ControlPanel.update(lastQuotaSnapshot);
+                sidebarProvider?.update(lastQuotaSnapshot);
                 break;
         }
     });
 
     context.subscriptions.push(
-        showControlPanelCommand,
         quickRefreshQuotaCommand,
         refreshQuotaCommand,
-        detectPortCommand,
+
         googleLoginCommand,
         googleLogoutCommand,
         googleAddAccountCommand,
         googleSwitchAccountCommand,
         googleLogoutAccountCommand,
-        showAccountsCommand,
+        vscode.commands.registerCommand('gravity-orchestrator.showControlPanel', async () => {
+            await vscode.commands.executeCommand('gravity-orchestrator.sidebarView.focus');
+        }),
         configChangeDisposable,
-        windowFocusDisposable,
+
         authStateDisposable,
         { dispose: () => quotaService?.dispose() },
         { dispose: () => statusBarService?.dispose() }
     );
+
+    // Initialize Sidebar Provider
+    sidebarProvider = new GravitySidebarProvider(context.extensionUri, quotaService);
+    context.subscriptions.push(
+        vscode.window.registerWebviewViewProvider(GravitySidebarProvider.viewType, sidebarProvider)
+    );
+    
+    // Pass latest snapshot to sidebar if available
+    if (lastQuotaSnapshot) {
+        sidebarProvider.update(lastQuotaSnapshot);
+    }
 
     registerDevCommands(context);
 
     logger.info('Gravity Orchestrator initialized');
 }
 
-/**
- * Automatically add account from IDE to app if:
- * 1. App API is ready
- * 2. No current account in app
- * 3. IDE has a logged-in account (token available)
- */
 async function autoAddAccountFromIde(): Promise<void> {
     try {
         const { GravityOrchestratorApi } = await import('./api/gravityOrchestratorApi');
@@ -591,17 +486,19 @@ async function autoAddAccountFromIde(): Promise<void> {
 async function initializeGoogleApiMethod(
     context: vscode.ExtensionContext,
     config: Config,
-    localizationService: LocalizationService
+    localizationService: LocalizationService,
+    statusBarService: StatusBarService,
+    googleAuthService: GoogleAuthService
 ): Promise<void> {
     logger.info('[Extension] Initializing GOOGLE_API method (no port detection needed)');
-    statusBarService!.showInitializing();
+    statusBarService.showInitializing();
 
     quotaService = new QuotaService();
     quotaService.setApiMethod(QuotaApiMethod.GOOGLE_API);
 
     registerQuotaServiceCallbacks();
 
-    const authState = googleAuthService!.getAuthState();
+    const authState = googleAuthService.getAuthState();
     if (authState.state === AuthState.NOT_AUTHENTICATED) {
         if (hasAntigravityDb()) {
             logger.info('[Extension] Detected local Antigravity installation, checking for stored token...');
@@ -610,61 +507,61 @@ async function initializeGoogleApiMethod(
             if (refreshToken) {
                 logger.info('[Extension] Found local Antigravity token, prompting user...');
 
-                statusBarService!.showNotLoggedIn();
-                statusBarService!.show();
+                statusBarService.showNotLoggedIn();
+                statusBarService.show();
                 startLocalTokenCheckTimer();
                 logger.info('[Extension] Pre-set status to not logged in before showing prompt');
 
                 const useLocalToken = localizationService.t('notify.useLocalToken');
                 const manualLogin = localizationService.t('notify.manualLogin');
-                vscode.window.showInformationMessage(
+                const selection = await vscode.window.showInformationMessage(
                     localizationService.t('notify.localTokenDetected'),
                     useLocalToken,
                     manualLogin
-                ).then(async (selection) => {
-                    if (selection === useLocalToken) {
-                        logger.info('[Extension] User selected to use local token');
-                        stopLocalTokenCheckTimer();
-                        statusBarService!.showLoggingIn();
-                        const success = await googleAuthService!.loginWithRefreshToken(refreshToken);
-                        if (success) {
-                            if (config.enabled) {
-                                logger.info('[Extension] GOOGLE_API: Starting quota polling after local token login...');
-                                statusBarService!.showFetching();
-                                quotaService!.startPolling(config.pollingInterval);
-                            }
-                            statusBarService!.show();
-                        } else {
-                            logger.info('[Extension] Local token login failed, reverting to not logged in');
-                            statusBarService!.showNotLoggedIn();
-                            statusBarService!.show();
-                            startLocalTokenCheckTimer();
-                        }
-                    } else if (selection === manualLogin) {
-                        logger.info('[Extension] User selected manual login');
-                    } else {
-                        logger.info('[Extension] User dismissed the prompt (selection: undefined)');
-                    }
-                });
+                );
 
+                if (selection === useLocalToken) {
+                    logger.info('[Extension] User selected to use local token');
+                    stopLocalTokenCheckTimer();
+                    statusBarService.showLoggingIn();
+                    const success = await googleAuthService.loginWithRefreshToken(refreshToken);
+                    if (success) {
+                        if (config.enabled && quotaService) {
+                            logger.info('[Extension] GOOGLE_API: Starting quota polling after local token login...');
+                            statusBarService.showFetching();
+                            quotaService.startPolling(config.pollingInterval);
+                        }
+                        statusBarService.show();
+                    } else {
+                        logger.info('[Extension] Local token login failed, reverting to not logged in');
+                        statusBarService.showNotLoggedIn();
+                        statusBarService.show();
+                        startLocalTokenCheckTimer();
+                    }
+                } else if (selection === manualLogin) {
+                    logger.info('[Extension] User selected manual login');
+                } else {
+                    logger.info('[Extension] User dismissed the prompt (selection: undefined)');
+                }
+                
                 return;
             }
         }
 
-        statusBarService!.showNotLoggedIn();
-        statusBarService!.show();
+        statusBarService.showNotLoggedIn();
+        statusBarService.show();
         startLocalTokenCheckTimer();
     } else if (authState.state === AuthState.TOKEN_EXPIRED) {
-        statusBarService!.showLoginExpired();
-        statusBarService!.show();
+        statusBarService.showLoginExpired();
+        statusBarService.show();
         startLocalTokenCheckTimer();
 
     } else if (config.enabled) {
         logger.info('[Extension] GOOGLE_API: Starting quota polling...');
-        statusBarService!.showFetching();
+        statusBarService.showFetching();
         quotaService.startPolling(config.pollingInterval);
 
-        statusBarService!.show();
+        statusBarService.show();
     }
 }
 
@@ -716,7 +613,8 @@ function registerQuotaServiceCallbacks(): void {
         lastQuotaSnapshot = snapshot;
         // Update status bar from app API instead of quota service, but provide snapshot as fallback
         statusBarService?.updateDisplayFromApp(snapshot);
-        ControlPanel.update(snapshot);
+        // Update sidebar
+        sidebarProvider?.update(snapshot);
 
         const apiMethod = quotaService?.getApiMethod();
         if (apiMethod === QuotaApiMethod.GOOGLE_API) {
@@ -746,16 +644,7 @@ function registerQuotaServiceCallbacks(): void {
         logger.error('Quota fetch failed:', error);
         statusBarService?.showError(`Connection failed: ${error.message}`);
 
-        const apiMethod = quotaService?.getApiMethod();
-        if (shouldAutoRedetectPort(error, apiMethod)) {
-            const now = Date.now();
-            if (now - lastAutoRedetectTime >= AUTO_REDETECT_THROTTLE_MS) {
-                lastAutoRedetectTime = now;
-                vscode.commands.executeCommand('gravity-orchestrator.detectPort');
-            } else {
-                logger.info('[AutoRedetect] Throttled; skip detectPort this time');
-            }
-        }
+
     });
 
     quotaService.onStatus((status: 'fetching' | 'retrying', retryCount?: number) => {
@@ -801,7 +690,6 @@ function handleConfigChange(config: Config): void {
         const localizationService = LocalizationService.getInstance();
 
         if (quotaService) {
-            const currentApiMethod = quotaService.getApiMethod();
             quotaService.setApiMethod(newApiMethod);
 
             if (newApiMethod === QuotaApiMethod.GOOGLE_API && googleAuthService) {
@@ -856,47 +744,7 @@ function handleConfigChange(config: Config): void {
                 }
             }
 
-            if (currentApiMethod === QuotaApiMethod.GOOGLE_API && newApiMethod !== QuotaApiMethod.GOOGLE_API) {
-                logger.info('[ConfigChange] Switching from GOOGLE_API to local API, need port detection');
-                quotaService.stopPolling();
-                statusBarService?.showDetecting();
 
-                (async () => {
-                    try {
-                        if (!portDetectionService) {
-                            await vscode.commands.executeCommand('gravity-orchestrator.detectPort');
-                            return;
-                        }
-
-                        const result = await portDetectionService.detectPort();
-                        if (result && result.port && result.csrfToken) {
-                            logger.info('[ConfigChange] Port detection success:', result);
-                            quotaService!.setPorts(result.connectPort, result.httpPort);
-                            statusBarService?.clearError();
-
-                            if (config.enabled) {
-                                quotaService!.startPolling(config.pollingInterval);
-                            }
-                            vscode.window.showInformationMessage(localizationService.t('notify.configUpdated'));
-                        } else {
-                            logger.warn('[ConfigChange] Port detection failed, no valid result');
-                            statusBarService?.showError('Port/CSRF Detection failed');
-                            vscode.window.showWarningMessage(
-                                localizationService.t('notify.unableToDetectPort'),
-                                localizationService.t('notify.retry')
-                            ).then(action => {
-                                if (action === localizationService.t('notify.retry')) {
-                                    vscode.commands.executeCommand('gravity-orchestrator.detectPort');
-                                }
-                            });
-                        }
-                    } catch (error: any) {
-                        logger.error('[ConfigChange] Port detection error:', error);
-                        statusBarService?.showError(`Detection failed: ${error.message}`);
-                    }
-                })();
-                return;
-            }
         }
 
         if (config.enabled) {
@@ -912,7 +760,7 @@ function handleConfigChange(config: Config): void {
 }
 
 /**
- * Helper to sync an account and its token to the Antigravity Tools app
+ * Helper to sync an account and its token to the Gravity Orchestrator app
  */
 async function syncAccountToApp(email: string): Promise<boolean> {
     try {
@@ -963,28 +811,7 @@ export function deactivate() {
     statusBarService?.dispose();
 }
 
-function shouldAutoRedetectPort(error: Error, apiMethod: QuotaApiMethod | undefined): boolean {
-    if (!apiMethod || apiMethod === QuotaApiMethod.GOOGLE_API) {
-        return false;
-    }
 
-    const msg = (error?.message || '').toLowerCase();
-    if (!msg) {
-        return false;
-    }
-
-    return (
-        error.name === 'QuotaInvalidCodeError' ||
-        msg.includes('missing csrf') ||
-        msg.includes('csrf token') ||
-        msg.includes('connection refused') ||
-        msg.includes('econnrefused') ||
-        msg.includes('socket') ||
-        msg.includes('port') ||
-        (msg.includes('http error') && msg.includes('403')) ||
-        msg.includes('invalid response code')
-    );
-}
 
 function getApiMethodFromConfig(_apiMethod: string): QuotaApiMethod {
     // Always return GOOGLE_API since we no longer support GET_USER_STATUS

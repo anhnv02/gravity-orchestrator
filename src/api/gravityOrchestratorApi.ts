@@ -2,7 +2,7 @@ import * as http from 'http';
 import { logger } from '../utils/logger';
 
 /**
- * API client for Antigravity Tools HTTP API
+ * API client for Gravity Orchestrator HTTP API
  * Default port: 19527
  */
 export class GravityOrchestratorApi {

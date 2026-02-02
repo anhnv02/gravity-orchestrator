@@ -150,7 +150,7 @@ export class StatusBarService {
 
             if (canUseGoogleApi) {
                 logger.info('[StatusBar] Fetching quota via Google API for fallback...');
-                const tempQuotaService = new QuotaService(0);
+                const tempQuotaService = new QuotaService();
                 tempQuotaService.setApiMethod(QuotaApiMethod.GOOGLE_API);
 
                 const quotaPromise = new Promise<QuotaSnapshot | null>((resolve) => {
@@ -301,7 +301,7 @@ export class StatusBarService {
 
             return {
                 timestamp: quota.updated_at ? new Date(quota.updated_at * 1000) : new Date(),
-                promptCredits: undefined,
+
                 models,
                 planName: quota.subscription_tier,
                 userEmail: account.email,
@@ -433,11 +433,7 @@ export class StatusBarService {
         this.showStatusBar();
     }
 
-    showDetecting(): void {
-        this.statusBarItem.text = this.localizationService.t('status.detecting');
-        this.statusBarItem.tooltip = this.localizationService.t('status.detecting');
-        this.showStatusBar();
-    }
+
 
     showInitializing(): void {
         this.statusBarItem.text = this.localizationService.t('status.initializing');

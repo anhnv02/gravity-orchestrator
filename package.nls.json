@@ -5,5 +5,9 @@
     "command.dev.previewNotifications": "Gravity Orchestrator Dev: Preview Notifications",
     "command.dev.previewStatusBar": "Gravity Orchestrator Dev: Preview Status Bar",
     "command.dev.previewTooltip": "Gravity Orchestrator Dev: Preview Tooltip",
-    "config.theme": "Theme preference for the Control Panel interface"
+    "command.googleLogout": "Gravity Orchestrator: Logout",
+    "command.googleAddAccount": "Gravity Orchestrator: Add Account",
+    "command.refreshQuota": "Gravity Orchestrator: Refresh Quota",
+    "config.enabled": "Enable or disable the extension",
+    "config.pollingInterval": "Quota polling interval in seconds (default: 30)"
 }

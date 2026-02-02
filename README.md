@@ -1,63 +1,71 @@
 # Gravity Orchestrator
 
-![Version](https://img.shields.io/badge/version-1.0.1-blue.svg)
+![Version](https://img.shields.io/badge/version-1.0.3-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 
-**Gravity Orchestrator** is a powerful VS Code extension designed to monitor and manage your AI model quotas for the Antigravity IDE ecosystem. It provides real-time status updates, multi-account management, and detailed usage insights directly within your editor.
+**Gravity Orchestrator** is the ultimate companion for the Antigravity IDE ecosystem, designed to give you complete control over your AI model quotas. It features real-time monitoring, seamless multi-account management, and a dedicated sidebar interface for deep insights.
 
 ## Features
 
-- **Real-Time Quota Monitoring**: Instantly view the remaining quota for various AI models (Gemini, Claude, GPT-4, etc.) supported by Antigravity.
-- **Status Bar Integration**: Get quick insights into your quota status with a glanceable status bar item. Hover for detailed per-model usage statistics.
-- **Control Panel Dashboard**: A comprehensive webview interface to manage your accounts and view detailed quota breakdowns.
-- **Multi-Account Support**: Seamlessly switch between multiple Google accounts, refresh quotas individually, and manage your sessions.
-- **Auto Token Sync**: Automatically detects and syncs login tokens from your local Antigravity IDE installation.
-- **Antigravity Tools Integration**: Optionally integrates with the Antigravity Tools app for enhanced account management.
+- **📊 Real-Time Quota Monitoring**: Instantly view remaining quota percentages for top-tier models like Gemini 3 Flash, Claude 4.5 Sonnet, and more.
+- **👥 Multi-Account Management**: 
+  - **Add multiple Google accounts** and switch between them instantly.
+  - **Auto-Sync** with Gravity Orchestrator app for a unified experience.
+  - **Session management** to handle logins, logouts, and token refreshes.
+- **🖥️ Dedicated Control Panel**: A rich Sidebar View (`Gravity Agent`) that provides:
+  - Detailed model usage breakdown.
+  - Account switching interface.
+
+- **⚡ Status Bar Integration**: Unobtrusive status indicator that changes color based on your remaining quota.
+- **🔄 Auto-Discovery**: Automatically detects and imports login tokens from your local Antigravity IDE installation.
 
 ## Usage
 
-### Commands
-
-Open the Command Palette (`Cmd+Shift+P` or `Ctrl+Shift+P`) and type `Gravity Orchestrator` to access the following commands:
-
-- **Gravity Orchestrator: Show Control Panel**: Opens the main dashboard to view accounts and detailed quotas.
-- **Gravity Orchestrator: Quick Refresh Quota**: Triggers an immediate refresh of your quota status.
-- **Gravity Orchestrator: Login with Google**: Initiates the login process to add a new account.
+### Sidebar Control Panel
+Click the **"G"** icon in the Activity Bar to open the **Gravity Agent** sidebar.
+- **Top Section**: Shows your active account.
+- **Account List**: Dropdown to switch between added accounts.
+- **Quota List**: Progress bars for each available model.
+- **Actions**: Buttons to add accounts or logout.
 
 ### Status Bar
+The status bar item (bottom right) is your quick-glance monitor:
+- 🟢 **Green**: Healthy quota (>50%)
+- 🟡 **Yellow**: Warning level (30-50%)
+- 🟠 **Orange**: Critical level (<30%)
+- 🔴 **Red**: Quota exhausted
 
-The status bar item displays the current extension status with color-coded indicators:
-- 🟢 **Green**: All models have sufficient quota (>50%)
-- 🟡 **Yellow**: Some models are running low (30-50%)
-- 🟠 **Orange**: Critical quota level (<30%)
-- 🔴 **Red**: Quota depleted
+**Interactions:**
+- **Click**: Opens the Gravity Agent sidebar.
+- **Hover**: Shows a rapid summary of all models.
 
-**Actions:**
-- **Click**: Opens the Control Panel.
-- **Hover**: Shows a tooltip with a detailed breakdown of your active models and their remaining quota/reset times.
+### Commands
+Access these via the Command Palette (`Cmd+Shift+P` / `Ctrl+Shift+P`):
 
-### Control Panel
-
-The Control Panel offers a rich interface to:
-- View all connected accounts with tier information (Free/Pro/Ultra).
-- See detailed quota usage (percentage bars, reset times) for each model.
-- Switch active accounts.
-- Refresh specific account data.
-- Toggle between light/dark themes.
+| Command | Description |
+|---------|-------------|
+| `Gravity Orchestrator: Show Control Panel` | Opens the main sidebar interface. |
+| `Gravity Orchestrator: Quick Refresh Quota` | Forces an immediate update of quota data. |
+| `Gravity Orchestrator: Login with Google` | Starts the OAuth flow to add a new account. |
+| `Gravity Orchestrator: Add Account` | Add an additional Google account to your session. |
+| `Gravity Orchestrator: Logout` | Sign out of the current active account. |
+| `Gravity Orchestrator: Refresh Quota` | Triggers a full retry/fetch cycle (useful if stuck). |
 
 ## Configuration
 
-You can customize the extension behavior via VS Code Settings:
+Customize the experience in VS Code Settings:
 
-- **`gravityOrchestrator.theme`**: Sets the theme for the Control Panel interface.
-  - `light` (default)
-  - `dark`
+- **`gravityOrchestrator.enabled`**: 
+  - `true` (default): Extension is active.
+  - `false`: Disables all background polling.
+- **`gravityOrchestrator.pollingInterval`**: 
+  - Default: `30` (seconds).
+  - Determines how frequently the extension checks for quota updates. Minimum is 10s.
 
 ## Requirements
 
-- **Antigravity IDE** (recommended): For automatic token detection and seamless integration.
-- **Google Account**: Required for authentication and quota access.
-- **Antigravity Tools App** (optional): For enhanced multi-account management.
+1. **Antigravity IDE** (Highly Recommended): The extension works best when it can auto-sync with your main IDE installation.
+2. **Google Account**: Necessary for accessing the AI models.
 
 ## License
 

@@ -2,7 +2,7 @@
   "name": "gravity-orchestrator",
   "displayName": "Gravity Orchestrator",
   "description": "Displays real-time AI model quota status for Antigravity IDE",
-  "version": "1.0.1",
+  "version": "1.0.3",
   "publisher": "AnhNguyen02",
   "icon": "icon.png",
   "engines": {
@@ -24,12 +24,26 @@
   ],
   "main": "./out/extension.js",
   "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "gravity-orchestrator-sidebar",
+          "title": "Gravity Orchestrator",
+          "icon": "resources/sidebar-icon-g.svg"
+        }
+      ]
+    },
+    "views": {
+      "gravity-orchestrator-sidebar": [
+        {
+          "type": "webview",
+          "id": "gravity-orchestrator.sidebarView",
+          "name": "Gravity Agent",
+          "icon": "resources/sidebar-icon-g.svg"
+        }
+      ]
+    },
     "commands": [
-      {
-        "command": "gravity-orchestrator.showControlPanel",
-        "title": "%command.showControlPanel%",
-        "icon": "$(dashboard)"
-      },
       {
         "command": "gravity-orchestrator.quickRefreshQuota",
         "title": "%command.quickRefreshQuota%",
@@ -39,6 +53,21 @@
         "command": "gravity-orchestrator.googleLogin",
         "title": "%command.googleLogin%",
         "icon": "$(sign-in)"
+      },
+      {
+        "command": "gravity-orchestrator.googleLogout",
+        "title": "%command.googleLogout%",
+        "icon": "$(sign-out)"
+      },
+      {
+        "command": "gravity-orchestrator.googleAddAccount",
+        "title": "%command.googleAddAccount%",
+        "icon": "$(add)"
+      },
+      {
+        "command": "gravity-orchestrator.refreshQuota",
+        "title": "%command.refreshQuota%",
+        "icon": "$(sync)"
       },
       {
         "command": "gravity-orchestrator.dev.previewNotifications",
@@ -51,6 +80,11 @@
         "icon": "$(list-unordered)"
       },
       {
+        "command": "gravity-orchestrator.showControlPanel",
+        "title": "%command.showControlPanel%",
+        "icon": "resources/sidebar-icon-g.svg"
+      },
+      {
         "command": "gravity-orchestrator.dev.previewTooltip",
         "title": "%command.dev.previewTooltip%",
         "icon": "$(info)"
@@ -59,15 +93,23 @@
     "menus": {
       "commandPalette": [
         {
-          "command": "gravity-orchestrator.showControlPanel",
-          "when": "true"
-        },
-        {
           "command": "gravity-orchestrator.quickRefreshQuota",
           "when": "true"
         },
         {
           "command": "gravity-orchestrator.googleLogin",
+          "when": "true"
+        },
+        {
+          "command": "gravity-orchestrator.googleLogout",
+          "when": "true"
+        },
+        {
+          "command": "gravity-orchestrator.googleAddAccount",
+          "when": "true"
+        },
+        {
+          "command": "gravity-orchestrator.refreshQuota",
           "when": "true"
         },
         {
@@ -86,18 +128,18 @@
     },
     "configuration": {
       "title": "Gravity Orchestrator",
-      "properties": {
-        "gravityOrchestrator.theme": {
-          "type": "string",
-          "default": "light",
-          "enum": [
-            "light",
-            "dark"
-          ],
-          "description": "%config.theme%",
-          "order": 100
+        "gravityOrchestrator.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "%config.enabled%",
+          "order": 1
+        },
+        "gravityOrchestrator.pollingInterval": {
+          "type": "number",
+          "default": 30,
+          "description": "%config.pollingInterval%",
+          "order": 2
         }
-      }
     }
   },
   "scripts": {

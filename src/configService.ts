@@ -8,7 +8,7 @@ export class ConfigService {
     const config = vscode.workspace.getConfiguration(this.configKey);
     return {
       enabled: config.get<boolean>('enabled', true),
-      pollingInterval: Math.max(10, config.get<number>('pollingInterval', 60)) * 1000,
+      pollingInterval: Math.max(10, config.get<number>('pollingInterval', 30)) * 1000,
       apiMethod: (config.get<string>('apiMethod', 'GOOGLE_API') as Config['apiMethod']),
       autoSwitchAccount: config.get<boolean>('autoSwitchAccount', false),
       switchThreshold: config.get<number>('switchThreshold', 10)
