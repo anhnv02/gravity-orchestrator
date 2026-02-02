@@ -16,13 +16,7 @@ export function registerDevCommands(context: vscode.ExtensionContext) {
         'gravity-orchestrator.dev.previewNotifications',
         async () => {
             const notifyKeys: { key: TranslationKey; type: 'info' | 'warning' | 'error' }[] = [
-                { key: 'notify.unableToDetectProcess', type: 'warning' },
-                { key: 'notify.refreshingQuota', type: 'info' },
-                { key: 'notify.detectionSuccess', type: 'info' },
-                { key: 'notify.unableToDetectPort', type: 'error' },
-                { key: 'notify.portDetectionFailed', type: 'error' },
                 { key: 'notify.configUpdated', type: 'info' },
-                { key: 'notify.portCommandRequired', type: 'error' },
             ];
 
             const items: vscode.QuickPickItem[] = [
@@ -73,7 +67,6 @@ export function registerDevCommands(context: vscode.ExtensionContext) {
         async () => {
             const statusKeys: TranslationKey[] = [
                 'status.initializing',
-                'status.detecting',
                 'status.fetching',
                 'status.retrying',
                 'status.error',
@@ -97,13 +90,12 @@ export function registerDevCommands(context: vscode.ExtensionContext) {
         async () => {
             const tooltipKeys: TranslationKey[] = [
                 'tooltip.title',
-                'tooltip.credits',
-                'tooltip.available',
-                'tooltip.remaining',
-                'tooltip.depleted',
-                'tooltip.resetTime',
                 'tooltip.model',
                 'tooltip.status',
+                'tooltip.resetTime',
+                'tooltip.clickToLogin',
+                'tooltip.clickToRelogin',
+                'tooltip.staleWarning',
                 'tooltip.error',
                 'tooltip.clickToRetry',
             ];

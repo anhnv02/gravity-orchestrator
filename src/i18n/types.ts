@@ -1,7 +1,6 @@
 export type TranslationKey =
 
     | 'status.initializing'
-    | 'status.detecting'
     | 'status.fetching'
     | 'status.retrying'
     | 'status.error'
@@ -12,10 +11,7 @@ export type TranslationKey =
     | 'status.stale'
 
     | 'tooltip.title'
-    | 'tooltip.credits'
-    | 'tooltip.available'
-    | 'tooltip.remaining'
-    | 'tooltip.depleted'
+
     | 'tooltip.resetTime'
     | 'tooltip.model'
     | 'tooltip.status'
@@ -25,23 +21,12 @@ export type TranslationKey =
     | 'tooltip.clickToRelogin'
     | 'tooltip.staleWarning'
 
-    | 'notify.unableToDetectProcess'
     | 'notify.retry'
     | 'notify.cancel'
     | 'notify.refreshingQuota'
-    | 'notify.detectionSuccess'
-    | 'notify.unableToDetectPort'
-    | 'notify.unableToDetectPortHint1'
-    | 'notify.unableToDetectPortHint2'
-    | 'notify.portDetectionFailed'
+
     | 'notify.configUpdated'
-    | 'notify.nonAntigravityDetected'
-    | 'notify.switchToGoogleApi'
-    | 'notify.keepLocalApi'
-    | 'notify.neverShowAgain'
-    | 'notify.portCommandRequired'
-    | 'notify.portCommandRequiredDarwin'
-    | 'notify.googleApiNoPortDetection'
+
     | 'notify.pleaseLoginFirst'
 
     | 'login.error.serviceNotInitialized'
@@ -68,8 +53,7 @@ export type TranslationKey =
     | 'devTools.stop'
     | 'common.yes'
     | 'common.no'
-    | 'notify.lowQuotaError'
-    | 'notify.allAccountsLowQuota';
+
 
 export interface TranslationMap {
     [key: string]: string;

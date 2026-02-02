@@ -435,19 +435,19 @@ export class GoogleAuthService {
     public async switchAccount(email: string): Promise<boolean> {
         logger.info('[GoogleAuth] Switching to account:', email);
 
-        // Try to use Antigravity Tools API first
+        // Try to use Gravity Orchestrator API first
         try {
             const { GravityOrchestratorApi } = await import('../api/gravityOrchestratorApi');
             const isApiReady = await GravityOrchestratorApi.isApiReady();
 
             if (isApiReady) {
-                logger.info('[GoogleAuth] Using Antigravity Tools API to switch account');
+                logger.info('[GoogleAuth] Using Gravity Orchestrator API to switch account');
                 const accountsResponse = await GravityOrchestratorApi.listAccounts();
 
                 // Find account by email
                 const account = accountsResponse.accounts.find(acc => acc.email === email);
                 if (!account) {
-                    logger.error('[GoogleAuth] Account not found in Antigravity Tools:', email);
+                    logger.error('[GoogleAuth] Account not found in Gravity Orchestrator:', email);
                     return false;
                 }
 
@@ -466,7 +466,7 @@ export class GoogleAuthService {
                 }
             }
         } catch (error) {
-            logger.warn('[GoogleAuth] Failed to use Antigravity Tools API, falling back to local switch:', error);
+            logger.warn('[GoogleAuth] Failed to use Gravity Orchestrator API, falling back to local switch:', error);
         }
 
         // Fallback to local token storage method

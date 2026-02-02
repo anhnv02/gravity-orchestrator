@@ -14,9 +14,7 @@ export class QuotaService {
   private readonly MAX_RETRY_COUNT = 3;
   private readonly RETRY_DELAY_MS = 5000;
 
-  private port: number;
-
-  private httpPort?: number;
+  private lastSnapshot: QuotaSnapshot | undefined;
   private pollingInterval?: NodeJS.Timeout;
   private updateCallback?: (snapshot: QuotaSnapshot) => void;
   private errorCallback?: (error: Error) => void;
@@ -32,9 +30,7 @@ export class QuotaService {
   private googleApiClient: GoogleCloudCodeClient;
   private apiMethod: QuotaApiMethod = QuotaApiMethod.GOOGLE_API;
 
-  constructor(port: number = 0) {
-    this.port = port;
-    this.httpPort = port;
+  constructor() {
     this.googleAuthService = GoogleAuthService.getInstance();
     this.googleApiClient = GoogleCloudCodeClient.getInstance();
   }
@@ -51,12 +47,7 @@ export class QuotaService {
 
 
 
-  setPorts(connectPort: number, httpPort?: number): void {
-    this.port = connectPort;
-    this.httpPort = httpPort ?? connectPort;
-    this.consecutiveErrors = 0;
-    this.retryCount = 0;
-  }
+
 
   onQuotaUpdate(callback: (snapshot: QuotaSnapshot) => void): void {
     this.updateCallback = callback;
@@ -148,6 +139,10 @@ export class QuotaService {
     await this.doFetchQuota();
   }
 
+  getLastSnapshot(): QuotaSnapshot | undefined {
+    return this.lastSnapshot;
+  }
+
   private async fetchQuota(): Promise<void> {
     if (this.isRetrying) {
       logger.info('Currently retrying; skipping this polling run...');
@@ -167,7 +162,7 @@ export class QuotaService {
     try {
       
       // Only use Google API for quota fetching
-      // Antigravity Tools app data is fetched separately via StatusBar.updateDisplayFromApp()
+      // Gravity Orchestrator app data is fetched separately via StatusBar.updateDisplayFromApp()
       logger.info('Using Google API (direct)');
 
       const result = await this.handleGoogleApiQuota();
@@ -175,6 +170,7 @@ export class QuotaService {
         return;
       }
       const snapshot: QuotaSnapshot = result;
+      this.lastSnapshot = snapshot;
 
       this.consecutiveErrors = 0;
       this.retryCount = 0;
@@ -185,8 +181,7 @@ export class QuotaService {
       }
 
       const modelCount = snapshot.models?.length ?? 0;
-      const hasPromptCredits = Boolean(snapshot.promptCredits);
-      logger.info(`[QuotaService] Snapshot ready: models=${modelCount}, promptCredits=${hasPromptCredits}`);
+      logger.info(`[QuotaService] Snapshot ready: models=${modelCount}`);
 
       if (this.updateCallback) {
         this.updateCallback(snapshot);
@@ -353,7 +348,7 @@ export class QuotaService {
 
       return {
         timestamp: new Date(),
-        promptCredits: undefined,
+
         models,
         planName: projectInfo.tier,
         userEmail,
